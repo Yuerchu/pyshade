@@ -11,6 +11,9 @@ build/
 # Node
 node_modules/
 
+# PyShade 编译产物(前端 generated 目录)
+frontend/src/generated/
+
 # OS / editor
 .DS_Store
 Thumbs.db

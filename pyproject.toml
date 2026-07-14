@@ -37,6 +37,7 @@ dev = [
   "pytest>=8",
   "ruff>=0.5",
   "pyright>=1.1",
+  "uvicorn>=0.30",
 ]
 
 [build-system]
