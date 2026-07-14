@@ -1,3 +1,3 @@
 # examples
 
-示例应用。M0 的端到端验证应用(3-5 个组件 + ASGI over IPC + 输入延迟测量)将放在这里。
+- [login_form](login_form/) — M0 端到端验证:登录表单(六组件 + 事件回传 + Python 更新 UI)

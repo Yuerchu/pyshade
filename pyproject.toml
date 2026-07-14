@@ -4,7 +4,7 @@ version = "0.1.0.dev0"
 description = "Build modern desktop apps in pure Python — Pydantic component DTOs compiled to shadcn/ui React, running on the system WebView via pytauri."
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 authors = [{ name = "于小丘 Yuerchu", email = "admin@yuxiaoqiu.cn" }]
 keywords = ["desktop", "gui", "tauri", "shadcn", "pydantic", "webview"]
 classifiers = [
@@ -38,6 +38,11 @@ dev = [
   "ruff>=0.5",
   "pyright>=1.1",
   "uvicorn>=0.30",
+  "httpx>=0.27",
+]
+e2e = [
+  "playwright>=1.40",
+  "pytest-playwright>=0.5",
 ]
 
 [build-system]
@@ -62,10 +67,11 @@ venv = ".venv"
 
 [[tool.pyright.executionEnvironments]]
 root = "tests"
-extraPaths = ["."]
+extraPaths = [".", "examples/login_form/src"]
 # FastAPI 路由函数经装饰器注册;Page 子类定义本身即测试对象(__init_subclass__ 副作用)
 reportUnusedFunction = "none"
 reportUnusedClass = "none"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["examples/login_form/src"]

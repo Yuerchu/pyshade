@@ -39,9 +39,7 @@ class DevHttpServer:
         try:
             import uvicorn
         except ImportError as exc:
-            raise RuntimeError(
-                "dev HTTP server 需要 uvicorn;请 `uv add --group dev uvicorn`"
-            ) from exc
+            raise RuntimeError("dev HTTP server 需要 uvicorn;请 `uv add --group dev uvicorn`") from exc
 
         cfg = uvicorn.Config(
             self._app,
