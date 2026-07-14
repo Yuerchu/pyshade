@@ -1,0 +1,70 @@
+[project]
+name = "pyshade"
+version = "0.1.0.dev0"
+description = "Build modern desktop apps in pure Python — Pydantic component DTOs compiled to shadcn/ui React, running on the system WebView via pytauri."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "于小丘 Yuerchu", email = "admin@yuxiaoqiu.cn" }]
+keywords = ["desktop", "gui", "tauri", "shadcn", "pydantic", "webview"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: User Interfaces",
+]
+dependencies = [
+  "pydantic>=2.7",
+  "fastapi>=0.115",
+  "anyio>=4",
+  "loguru>=0.7",
+  "pytauri>=0.8,<0.9",
+]
+
+[project.scripts]
+pyshade = "pyshade.cli:main"
+
+[project.urls]
+Documentation = "https://github.com/yuerchu/pyshade"
+Source = "https://github.com/yuerchu/pyshade"
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "ruff>=0.5",
+  "pyright>=1.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.format]
+quote-style = "preserve"
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
+venvPath = "."
+venv = ".venv"
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+extraPaths = ["."]
+# FastAPI 路由函数经装饰器注册;Page 子类定义本身即测试对象(__init_subclass__ 副作用)
+reportUnusedFunction = "none"
+reportUnusedClass = "none"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
