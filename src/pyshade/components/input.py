@@ -2,6 +2,7 @@ from typing import Annotated, Any, ClassVar
 
 from pyshade.components.base import Component, ControlledMixin, EventSpec, Handler
 from pyshade.expr import ClientVal, Expr
+from pyshade.state import ServerRef
 
 
 class Input(Component, ControlledMixin[str]):
@@ -16,7 +17,7 @@ class Input(Component, ControlledMixin[str]):
     label: str | None = None
     placeholder: str | None = None
     value: str | ClientVal[str] = ''
-    disabled: bool | Expr[bool] = False
+    disabled: bool | Expr[bool] | ServerRef[bool] = False
     on_change: Annotated[Handler | None, EventSpec('change')] = None
 
     def __init__(
@@ -25,9 +26,9 @@ class Input(Component, ControlledMixin[str]):
         label: str | None = None,
         placeholder: str | None = None,
         value: str | ClientVal[str] = '',
-        disabled: bool | Expr[bool] = False,
+        disabled: bool | Expr[bool] | ServerRef[bool] = False,
         on_change: Handler | None = None,
-        visible: bool | Expr[bool] = True,
+        visible: bool | Expr[bool] | ServerRef[bool] = True,
     ) -> None:
         data: dict[str, Any] = {
             'label': label,
@@ -53,15 +54,15 @@ class PasswordInput(Component):
 
     label: str | None = None
     placeholder: str | None = None
-    disabled: bool | Expr[bool] = False
+    disabled: bool | Expr[bool] | ServerRef[bool] = False
 
     def __init__(
         self,
         *,
         label: str | None = None,
         placeholder: str | None = None,
-        disabled: bool | Expr[bool] = False,
-        visible: bool | Expr[bool] = True,
+        disabled: bool | Expr[bool] | ServerRef[bool] = False,
+        visible: bool | Expr[bool] | ServerRef[bool] = True,
     ) -> None:
         data: dict[str, Any] = {'label': label, 'placeholder': placeholder, 'disabled': disabled, 'visible': visible}
         super().__init__(**data)

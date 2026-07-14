@@ -2,6 +2,7 @@ from typing import Annotated, Any, ClassVar
 
 from pyshade.components.base import Component, ControlledMixin, EventSpec, Handler
 from pyshade.expr import ClientVal, Expr
+from pyshade.state import ServerRef
 
 
 class Switch(Component, ControlledMixin[bool]):
@@ -15,7 +16,7 @@ class Switch(Component, ControlledMixin[bool]):
 
     label: str | None = None
     checked: bool | ClientVal[bool] = False
-    disabled: bool | Expr[bool] = False
+    disabled: bool | Expr[bool] | ServerRef[bool] = False
     on_change: Annotated[Handler | None, EventSpec('change')] = None
 
     def __init__(
@@ -23,9 +24,9 @@ class Switch(Component, ControlledMixin[bool]):
         *,
         label: str | None = None,
         checked: bool | ClientVal[bool] = False,
-        disabled: bool | Expr[bool] = False,
+        disabled: bool | Expr[bool] | ServerRef[bool] = False,
         on_change: Handler | None = None,
-        visible: bool | Expr[bool] = True,
+        visible: bool | Expr[bool] | ServerRef[bool] = True,
     ) -> None:
         data: dict[str, Any] = {
             'label': label,

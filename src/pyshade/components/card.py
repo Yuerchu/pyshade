@@ -4,6 +4,7 @@ from pydantic import Field
 
 from pyshade.components.base import Component
 from pyshade.expr import Expr
+from pyshade.state import ServerRef
 
 
 class Card(Component):
@@ -23,7 +24,7 @@ class Card(Component):
         *children: Component,
         title: str | None = None,
         description: str | None = None,
-        visible: bool | Expr[bool] = True,
+        visible: bool | Expr[bool] | ServerRef[bool] = True,
     ) -> None:
         data: dict[str, Any] = {
             'children': list(children),

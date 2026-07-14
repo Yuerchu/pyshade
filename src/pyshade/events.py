@@ -17,6 +17,7 @@ from pyshade.app import ShadeApp
 from pyshade.components.base import Component, EventSpec, Handler
 from pyshade.expr import Expr
 from pyshade.page import Page, anchor_of, iter_nodes
+from pyshade.state import ServerRef
 
 
 class EventHandlerError(Exception):
@@ -48,11 +49,17 @@ class Update:
                 raise ValueError(f"{type(target).__name__} 没有 prop '{key}',无法 Update")
             if any(isinstance(m, EventSpec) for m in fields[key].metadata):
                 raise ValueError(f"事件字段 '{key}' 不能通过 Update 修改")
-            if isinstance(getattr(target, key), Expr):
+            current: object = getattr(target, key)
+            if isinstance(current, Expr):
                 # 所有权公理(design.md §3.4):Expr 绑定的 prop 归客户端所有,服务端 patch 是编程错误
                 raise ValueError(
                     f"{self.target}.{key} 已绑定客户端表达式(所有权在客户端),不能通过 Update 修改;"
-                    "需要服务端控制请改用普通值,或等 ServerState 字段绑定(M1 Phase 3)"
+                    "需要服务端控制请改用普通值 + Update,或绑定 ServerState 字段"
+                )
+            if isinstance(current, ServerRef):
+                raise ValueError(
+                    f"{self.target}.{key} 已绑定 ServerState 字段({current.target}.{current.field}),"
+                    "请直接给该字段赋值(自动 diff),不要用 Update"
                 )
             validator.validate_assignment(probe, key, value)  # 类型不符抛 ValidationError
         self.props = props

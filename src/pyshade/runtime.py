@@ -11,12 +11,16 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import ValidationError
 
 from pyshade.events import EventContext, EventRegistry, Update
+from pyshade.state import patch_sink
 
 
 def build_fastapi_app(registry: EventRegistry, *, title: str = 'pyshade') -> FastAPI:
     """构造承载事件路由的 FastAPI app;对最终用户不可见。"""
+    from pyshade.push import mount_push_route
+
     app = FastAPI(title=title, docs_url=None, redoc_url=None, openapi_url=None)
     mount_event_routes(app, registry)
+    mount_push_route(app)
     return app
 
 
@@ -33,9 +37,10 @@ def mount_event_routes(app: FastAPI, registry: EventRegistry) -> None:
             payload = EventContext.model_validate_json(body) if body else EventContext()
         except ValidationError as exc:
             raise HTTPException(status_code=422, detail=exc.errors()) from exc
-        result = entry.handler(payload)
-        if inspect.isawaitable(result):
-            result = await result
+        with patch_sink() as sink:
+            result = entry.handler(payload)
+            if inspect.isawaitable(result):
+                result = await result
         updates: list[Update] = []
         if result is not None:
             items: list[object] = list(result)
@@ -45,4 +50,5 @@ def mount_event_routes(app: FastAPI, registry: EventRegistry) -> None:
                     detail=f"handler {handler_id} 必须返回 list[Update] 或 None",
                 )
             updates = [u for u in items if isinstance(u, Update)]
-        return {'patches': [update.to_payload() for update in updates]}
+        # auto-diff 在前、显式 Update 在后:前端顺序 merge,显式 Update 覆盖(M0 兼容)
+        return {'patches': sink.to_patches() + [update.to_payload() for update in updates]}

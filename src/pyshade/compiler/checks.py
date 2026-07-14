@@ -13,6 +13,7 @@ from pyshade.compiler.ir import NodeIR, PageIR, PropInfo, iter_node_irs
 from pyshade.components.base import Component, EventSpec, is_sensitive, read_anchor
 from pyshade.events import validate_handler
 from pyshade.expr import ClientVal, Expr, ExprType, PropRef, read_owner
+from pyshade.state import ServerRef
 
 _JS_RESERVED = frozenset(
     {
@@ -94,6 +95,8 @@ def _check_node(node: NodeIR, page_name: str, seen: set[str], state: _ExprState)
             _check_client_bind(node, prop, page_name, state)
         elif prop.binding == 'expr':
             _check_expr_prop(node, prop, page_name, state)
+        elif prop.binding == 'server_ref':
+            _check_server_ref(node, prop)
 
     for child in node.children:
         _check_node(child, page_name, seen, state)
@@ -169,6 +172,35 @@ def _check_expr_prop(node: NodeIR, prop: PropInfo, page_name: str, state: _ExprS
             state.ref_sites.setdefault(id(leaf), _site(node, prop))
         else:
             _check_prop_ref(node, prop, leaf, page_name)
+
+
+def _scalar_type_of(value: object) -> ExprType | None:
+    if isinstance(value, bool):  # bool 先于 int(子类)
+        return ExprType.BOOL
+    if isinstance(value, int):
+        return ExprType.INT
+    if isinstance(value, float):
+        return ExprType.FLOAT
+    if isinstance(value, str):
+        return ExprType.STR
+    return None
+
+
+def _check_server_ref(node: NodeIR, prop: PropInfo) -> None:
+    ref = cast('ServerRef[Any]', prop.default_value)
+    if ref.field not in ref.state_class.__shade_fields__:
+        raise CompileError(
+            f"{_site(node, prop)}: {ref.state_class.__name__} 没有字段 '{ref.field}' → "
+            "ServerRef 请通过类访问获得(如 ChatState.status),不要手工构造"
+        )
+    expected = _expected_expr_type(node.component, prop.name)
+    actual = _scalar_type_of(ref.default)
+    if expected is not None and actual is not expected:
+        actual_name = actual.value if actual is not None else type(ref.default).__name__
+        raise CompileError(
+            f"{_site(node, prop)}: ServerState 字段 {ref.target}.{ref.field} 的类型 {actual_name} "
+            f"与 prop 类型 {expected.value} 不匹配 → 请调整字段类型或换一个 prop"
+        )
 
 
 def _check_owned_by_page(node: NodeIR, prop: PropInfo, val: 'ClientVal[Any]', page_name: str) -> None:

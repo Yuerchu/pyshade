@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { usePageRuntime } from "@/runtime/page";
 
 export function SettingsPage() {
-  const rt = usePageRuntime({ boundProps: ["SettingsPage.thinking_switch.checked", "SettingsPage.dark_switch.checked", "SettingsPage.effort.disabled", "SettingsPage.nickname.value", "SettingsPage.greeting.visible", "SettingsPage.greeting.text", "SettingsPage.echo.visible", "SettingsPage.echo.text", "SettingsPage.both.visible"] });
+  const rt = usePageRuntime({ boundProps: ["SettingsPage.thinking_switch.checked", "SettingsPage.dark_switch.checked", "SettingsPage.effort.disabled", "SettingsPage.nickname.value", "SettingsPage.greeting.visible", "SettingsPage.greeting.text", "SettingsPage.echo.visible", "SettingsPage.echo.text", "SettingsPage.both.visible"], push: true });
 
   const [thinkingValue, setThinkingValue] = useState<boolean>(true);
   const [darkValue, setDarkValue] = useState<boolean>(false);
@@ -67,6 +67,12 @@ export function SettingsPage() {
             )}
             {(thinkingValue && darkValue) && (
               <p className="text-muted-foreground">{rt.ov("SettingsPage.both", "text", "思考与深色已同时开启")}</p>
+            )}
+            {rt.ov("SettingsPage.status", "visible", true) && (
+              <p className="text-muted-foreground">{rt.ov("$s:SettingsState", "status", "就绪")}</p>
+            )}
+            {rt.ov("$s:SettingsState", "busy", false) && (
+              <p>{rt.ov("SettingsPage.spinner", "text", "处理中…")}</p>
             )}
             {rt.ov("SettingsPage.save", "visible", true) && (
               <Button variant={rt.ov("SettingsPage.save", "variant", "default")} size={rt.ov("SettingsPage.save", "size", "default")} disabled={rt.ov("SettingsPage.save", "disabled", false)} onClick={() => rt.fire("SettingsPage.save.on_click", { values: collectValues(true) })}>

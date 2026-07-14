@@ -10,6 +10,7 @@ from typing import Any, ClassVar, Generic, TypeVar
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
 from pyshade.expr import Expr
+from pyshade.state import ServerRef
 
 T = TypeVar('T')
 
@@ -41,8 +42,9 @@ class Component(BaseModel):
 
     model_config = ConfigDict(extra='forbid')
 
-    visible: bool | Expr[bool] = True
-    """普通值 → 服务端 Update 驱动显隐;Expr → 客户端所有,编译为渲染 guard(M1)。"""
+    visible: bool | Expr[bool] | ServerRef[bool] = True
+    """普通值 → 服务端 Update 驱动显隐;Expr → 客户端所有,编译为渲染 guard;
+    ServerRef → ServerState 字段所有,auto-diff 自动到达(M1)。"""
 
     _anchor: str | None = PrivateAttr(default=None)
     """Page 收集时刻写,如 'LoginPage.username';匿名后代为路径形式 'LoginPage.card[0]'。"""

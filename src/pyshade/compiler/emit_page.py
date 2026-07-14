@@ -17,6 +17,7 @@ from pyshade.compiler.writer import TsxWriter, js_bool, js_string, js_value
 from pyshade.components.switch import Switch
 from pyshade.expr import ClientVal, Expr, ExprType, PropRef
 from pyshade.page import anchor_of
+from pyshade.state import ServerRef
 
 EmitFn = Callable[[NodeIR, TsxWriter, '_PageEmitContext'], None]
 
@@ -51,6 +52,8 @@ class _PageEmitContext:
         """受控组件 anchor → 绑定的 ClientVal 字段名(共用其 useState)。"""
         self.bound_props: list[str] = []
         """客户端所有的 'anchor.prop'(expr/client_bind),文档序。"""
+        self.uses_push: bool = False
+        """页面含 ServerRef 绑定 → usePageRuntime({ push: true }) 订阅 /_shade/push。"""
 
     def add_controlled(self, node: NodeIR) -> None:
         self.controlled_inputs.append(node)
@@ -69,6 +72,9 @@ class _PageEmitContext:
     def prop_js(self, node: NodeIR, prop: PropInfo) -> str:
         if prop.binding == 'expr':
             return cast('Expr[Any]', prop.default_value).to_js(self.scope)
+        if prop.binding == 'server_ref':
+            ref = cast('ServerRef[Any]', prop.default_value)
+            return f'rt.ov({js_string(ref.target)}, {js_string(ref.field)}, {js_value(ref.default)})'
         return _ov(node.anchor, prop.name, prop.default_value)
 
 
@@ -99,6 +105,8 @@ def _prepare_bindings(page_ir: PageIR, ctx: _PageEmitContext) -> None:
 
     for node in nodes:
         for prop in node.props:
+            if prop.binding == 'server_ref':
+                ctx.uses_push = True
             if prop.binding not in ('expr', 'client_bind'):
                 continue
             ctx.bound_props.append(f'{node.anchor}.{prop.name}')
@@ -124,8 +132,8 @@ def _emit_visible_guard(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> bo
         w.line(f'{{({js}) && (')
         w.indent()
         return True
-    if visible_prop.default_value is True:
-        w.line(f'{{{_ov(node.anchor, "visible", True)} && (')
+    if visible_prop.binding == 'server_ref' or visible_prop.default_value is True:
+        w.line(f'{{{ctx.prop_js(node, visible_prop)} && (')
         w.indent()
         return True
     return False
@@ -369,9 +377,14 @@ def emit_page(page_ir: PageIR) -> str:
     w.line()
     w.line(f'export function {page_ir.name}() {{')
     w.indent()
+    options_parts: list[str] = []
     if ctx.bound_props:
         bound = ', '.join(js_string(p) for p in ctx.bound_props)
-        w.line(f'const rt = usePageRuntime({{ boundProps: [{bound}] }});')
+        options_parts.append(f'boundProps: [{bound}]')
+    if ctx.uses_push:
+        options_parts.append('push: true')
+    if options_parts:
+        w.line(f'const rt = usePageRuntime({{ {", ".join(options_parts)} }});')
     else:
         w.line('const rt = usePageRuntime();')
     w.line()

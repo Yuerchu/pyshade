@@ -67,3 +67,16 @@ class TestUpdateOwnership:
 
         update = Update(MixedPage.effort, label='新标签')
         assert update.to_payload() == {'target': 'MixedPage.effort', 'props': {'label': '新标签'}}
+
+    def test_update_to_server_ref_prop_rejected(self) -> None:
+        from pyshade.components import Text
+        from pyshade.state import ServerState
+
+        class UpdateGuardState(ServerState):
+            status: str = '就绪'
+
+        class StatusPage(Page):
+            status = Text(text=UpdateGuardState.status)
+
+        with pytest.raises(ValueError, match='直接给该字段赋值'):
+            Update(StatusPage.status, text='强行改')

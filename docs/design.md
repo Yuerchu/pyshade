@@ -55,18 +55,50 @@ Reflex 的教训:编译只覆盖结构层,不自动决定逻辑归属。PyShade 
   写 `if` 语句)编译期直接报错。
 - `ServerState`:任意 Python,走 IPC 回传,由 FastAPI 应用层处理。
 
+**所有权公理(M1 已实现)**:每个组件 prop 恰好有一个所有者,绑定形态即所有权,不存在优先级仲裁:
+
+| prop 值 | 所有者 | 编译产物 | patch 可达性 |
+|---|---|---|---|
+| 普通 Python 值 | 服务端 | `rt.ov(anchor, prop, 默认)` | `Update` 可 patch |
+| `Expr[T]`(含 `ClientVal`) | 客户端 | 内联 JS,引用 useState 变量 | `Update` 构造期报错;前端 `boundProps` warn+丢弃 |
+| `ServerRef[T]`(ServerState 类字段) | 该字段 | `rt.ov("$s:类名", 字段, 默认)` | auto-diff/推送自动到达;`Update` 构造期报错 |
+
+M1 落地形态:
+
+- `ClientVal[T]` 声明为 Page 类字段(`__init_subclass__` 收集、刻 owner、跨页复用报错);
+  受控 prop 绑定(`Switch(checked=val)` / `Input(value=val)`)即唯一写者,编译为共用 useState;
+  多写者/跨页引用/类型不匹配均为 CompileError,零绑定被引用发 UserWarning。
+- `ServerState` 子类:类体注解即字段(必须带 JSON 可序列化默认值),单例(`$s:` 命名空间按类名
+  寻址,类名冲突注册期报错)。`ServerField` 数据描述符:类访问 → `ServerRef[T]`,实例访问 → 纯 `T`,
+  赋值 → TypeAdapter 校验 + auto-diff;注解写裸 `T`(实例语义诚实),描述符由 `__init_subclass__`
+  运行期替换;`ServerRef` 的 `__bool__`/`__eq__` 抛错防误用。
+- auto-diff 三态(contextvar sink):事件请求内的赋值记入 sink,随响应 envelope 下发——顺序为
+  auto-diff 在前、显式 `Update` 在后,前端顺序 merge 故显式者覆盖(M0 兼容);请求外
+  (后台任务——sink 带 closed 标志,spawn 任务继承的 contextvar 快照按已关闭处理)交给
+  `PatchBus` → `GET /_shade/push` SSE。订阅先于快照、快照先于增量:merge 幂等,无需 patch 序号,
+  重连即重收快照。SSE 跑在既有 ASGI 栈上,IPC 模式即一条常驻流式请求(Channel 帧),零新协议。
+
 ### 3.4 表达式系统:SQLAlchemy 模式
 
-`ClientState` 表达式采用 SQLAlchemy 式运算符重载构建表达式树,编译期翻译成 JS。继承其二十年踩坑经验:
+`ClientState` 表达式采用 SQLAlchemy 式运算符重载构建表达式树,编译期翻译成 JS(M1 已实现,
+`pyshade/expr.py`)。继承其二十年踩坑经验:
 
 - `and`/`or`/`not` 无法重载(Python 语言限制),使用 `&`/`|`/`~`。
-- `&` 优先级高于比较运算符的坑(`a == b & c == d` 解析为 `a == (b & c) == d`):文档强调加括号,
-  编译期对可疑的裸比较组合发出警告。
-- `__bool__` 抛 `TypeError`:表达式对象进入 `if`/`while` 布尔上下文时立即报错并提示改用 `.cond()`,
-  杜绝 Reflex 式"为什么 `if state.thinking:` 不生效"的静默困惑。
-- 借鉴 `hybrid_property`:derived 值既能编译成前端 JS,也能在 Python 侧求值——框架测试不必起 WebView,
-  直接断言 Python 求值结果。
-- 类型标注参考 SQLAlchemy 2.0 的 `Mapped[T]`,提供 `ClientVal[T]` 泛型描述符,IDE/mypy 可推导。
+- `&` 优先级高于比较运算符的坑(`a == b & c == d` 解析为 `a == (b & c) == d`)双防线:
+  `&`/`|` 构造期强制操作数为 bool 表达式(`b & c` 非 bool 立即 TypeError 并提示加括号);
+  链式比较触发中间结果 `__bool__` 抛错。
+- `__bool__`/`__len__`/`__iter__`/`__contains__` 全部抛 `TypeError`:表达式进入布尔上下文时
+  立即报错并给出正确写法(`&`/`|`/`~` + 括号、`cond()` 收窄、测试用 `evaluate(snapshot)`),
+  杜绝 Reflex 式"为什么 `if state.thinking:` 不生效"的静默困惑。`cond()` 是模块级函数:
+  字面量在左(`True == expr`)导致 pyright 推导退化成 bool 时收窄回 `Expr[bool]`。
+- 借鉴 `hybrid_property`:同一棵树双端求值——`to_js(scope)` 编译成 JS(复合子表达式一律加括号,
+  与 JS 优先级解耦),`evaluate(snapshot)` Python 侧同语义求值,框架测试不必起 WebView。
+- 类型标注:`ClientVal[T]` 诚实泛型(不做值代理——值代理会把 `~thinking` 推成 int,毁掉运算符
+  推导);运算符用 self-type 约束,pyright 对 `~Expr[str]`、`Expr[bool] < Expr[bool]` 直接报错,
+  与运行时构造期检查双层防线。受控组件值经 `value_of(component)` 进表达式
+  (`ControlledMixin[T]` 提供推导);敏感组件不混入,类型层与运行时双层拒绝(§3.8)。
+- 构造期定型:每个节点构造时确定类型(BOOL/STR/INT/FLOAT),跨类别比较、非 bool 逻辑运算、
+  `str + int` 等在表达式构造的那一行即报错,不等到编译。
 
 ### 3.5 组件层:Pydantic DTO
 
@@ -177,8 +209,10 @@ M0 七项验证全部通过(隐藏窗口 `visible:false`,JS 正常执行,`docume
   3-5 个组件(必含一个受控输入组件)、编译器雏形(Python DTO → React 代码生成)、pytauri 壳跑通、
   ASGI over IPC 适配器雏形(自定义 `invoke_handler` → ASGI scope → FastAPI,含 Channel 流式验证)、
   IPC 事件回传闭环、验证输入延迟可接受。
-- **M1 — 表达式系统与编译期校验**:
-  `ClientState`/`ServerState`、SQLAlchemy 式表达式树、嵌套合法性/事件签名/死引用检查、`__bool__` 抛错。
+- **M1 — 表达式系统与编译期校验**(已完成,详见 §3.3/§3.4):
+  `ClientState`/`ServerState`、SQLAlchemy 式表达式树、嵌套合法性/事件签名/死引用检查、`__bool__` 抛错;
+  另交付 `pyshade.testing` 真机 E2E 框架 + GitHub Actions CI(§4 实测数字来源)。
+  未进 M1(移交 M2+):`Each` 循环容器、受限闭包 handler、多页面路由。
 - **M2 — 组件铺量与按需打包**:
   覆盖 shadcn 主要组件、静态 import 收集 + entry 生成 + esbuild 集成、动态引用逃生舱。
 - **M3 — 打包分发链**:
@@ -192,7 +226,6 @@ M0 是风险所在,M2 之后是体力活;先验证再铺量。
 ## 6. 开放问题
 
 - ASGI over IPC 适配器是否作为独立包发布(如 `pytauri-asgi`),回馈 pytauri 生态并摊薄维护成本。
-- 流式协议设计:ASGI streaming response / SSE 与 Tauri Channel 的映射细节;是否需要 WebSocket 语义。
 - 热重载设计:编译路线下 dev 模式的增量编译与状态保持;pytauri standalone 模式下 Python 代码变更
   需重装的问题如何规避(dev 用 editable install)。
 - shadcn 上游同步策略:shadcn 组件源码更新后,PyShade 内置副本如何跟进。
@@ -200,4 +233,6 @@ M0 是风险所在,M2 之后是体力活;先验证再铺量。
 - web target 的优先级:仅服务文档站,还是作为正式发布特性。
 
 已关闭的问题(结论回填正文):pytauri 成熟度评估 → 3.9;Python 打包工具选型 → 不用
-PyInstaller/Nuitka,走 python-build-standalone + Tauri bundler(3.9 / M3)。
+PyInstaller/Nuitka,走 python-build-standalone + Tauri bundler(3.9 / M3);流式协议设计 →
+PSA1 封包 + Channel 帧(§3.7 / §4 实测),SSE 直接复用 ASGI 流式分支(§3.3 推送通道),
+WebSocket 语义 M1 未见需求,不引入。

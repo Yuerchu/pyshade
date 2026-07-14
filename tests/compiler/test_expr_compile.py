@@ -11,6 +11,7 @@ from pyshade.components import Button, Card, Input, PasswordInput, Switch, Text
 from pyshade.events import EventContext, Update
 from pyshade.expr import ClientVal, ExprType, PropRef, value_of
 from pyshade.page import Page
+from pyshade.state import ServerRef, ServerState
 from tests.compiler.test_compiler import golden_compare
 
 
@@ -18,8 +19,13 @@ def on_save(ctx: EventContext) -> list[Update]:
     return []
 
 
+class SettingsState(ServerState):
+    status: str = '就绪'
+    busy: bool = False
+
+
 class SettingsPage(Page):
-    """三形态演示:ClientVal(client_bind)/ Expr(内联 JS)/ plain(rt.ov)。"""
+    """四形态演示:plain(rt.ov)/ Expr(内联 JS)/ ClientVal(client_bind)/ ServerRef($s:)。"""
 
     thinking = ClientVal(True)
     dark = ClientVal(False)
@@ -32,6 +38,8 @@ class SettingsPage(Page):
     greeting = Text(text='你好,' + nick + '!', visible=nick != '')
     echo = Text(text='输入了:' + value_of(effort), visible=value_of(effort) != '', muted=True)
     both = Text('思考与深色已同时开启', visible=thinking & dark, muted=True)
+    status = Text(text=SettingsState.status, muted=True)
+    spinner = Text('处理中…', visible=SettingsState.busy)
     save = Button('保存', submit=True, on_click=on_save)
 
     card = Card(
@@ -42,6 +50,8 @@ class SettingsPage(Page):
         greeting,
         echo,
         both,
+        status,
+        spinner,
         save,
         title='设置',
         description='M1 表达式演示',
@@ -82,6 +92,12 @@ class TestBindingClassification:
     def test_page_ir_carries_client_vals(self) -> None:
         ir = build_page_ir(SettingsPage)
         assert list(ir.client_vals) == ['thinking', 'dark', 'nick']
+
+    def test_server_ref_binding(self) -> None:
+        ir = build_page_ir(SettingsPage)
+        status_node = next(n for n in ir.roots[0].children if n.anchor == 'SettingsPage.status')
+        text = next(p for p in status_node.props if p.name == 'text')
+        assert text.binding == 'server_ref'
 
 
 class TestExprChecks:
@@ -186,6 +202,27 @@ class TestExprChecks:
         with pytest.warns(UserWarning, match='没有任何受控组件绑定'):
             check_page_ir(build_page_ir(ConstPage))
 
+    def test_server_ref_type_mismatch_rejected(self) -> None:
+        class RefMismatchState(ServerState):
+            label: str = 'x'
+
+        class RefMismatchPage(Page):
+            # str 字段绑到 bool prop:类访问静态类型是裸 str,须由 G 规则拦截
+            text = Text('hi', visible=RefMismatchState.label)  # pyright: ignore[reportArgumentType]
+
+        with pytest.raises(CompileError, match='不匹配'):
+            check_page_ir(build_page_ir(RefMismatchPage))
+
+    def test_hand_built_server_ref_rejected(self) -> None:
+        class HandRefState(ServerState):
+            real: str = 'x'
+
+        class HandRefPage(Page):
+            text = Text(text=ServerRef(HandRefState, 'ghost', 'x'))
+
+        with pytest.raises(CompileError, match="没有字段 'ghost'"):
+            check_page_ir(build_page_ir(HandRefPage))
+
     def test_var_name_collision_rejected(self) -> None:
         # 匿名组件 CollisionPage.wrapper[0] 的路径变量名是 wrapper_0
         class CollisionPage(Page):
@@ -216,4 +253,8 @@ class TestSettingsGolden:
         assert 'usePageRuntime({ boundProps: [' in tsx
         # collectValues 追加 ClientVal 条目
         assert 'nick: nickValue,' in tsx
+        # ServerRef:$s: 命名空间的 rt.ov(patch 可达,不进 boundProps)
+        assert 'rt.ov("$s:SettingsState", "status", "就绪")' in tsx
+        assert '{rt.ov("$s:SettingsState", "busy", false) && (' in tsx
+        assert '$s:SettingsState' not in tsx.split('boundProps: [')[1].split(']')[0]
         golden_compare('SettingsPage.gen.tsx', tsx)

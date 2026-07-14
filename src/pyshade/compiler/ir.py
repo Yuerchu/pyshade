@@ -12,6 +12,7 @@ from typing import Any, Literal
 from pyshade.components.base import Component, ControlledMixin, EventSpec, controlled_prop_of, is_sensitive
 from pyshade.expr import ClientVal, Expr
 from pyshade.page import Page, anchor_of, iter_children
+from pyshade.state import ServerRef
 
 PropBinding = Literal['plain', 'expr', 'client_bind', 'server_ref']
 
@@ -49,6 +50,8 @@ def _is_enum_field(value: object) -> bool:
 
 
 def _classify_binding(component: Component, name: str, value: object) -> PropBinding:
+    if isinstance(value, ServerRef):
+        return 'server_ref'
     if not isinstance(value, Expr):
         return 'plain'
     if (

@@ -1,12 +1,15 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { invokeEvent } from "./invoke";
 import { isPatchesEnvelope, type Patch } from "./patches";
+import { subscribePatches } from "./push";
 
 type Overrides = Record<string, Record<string, unknown>>;
 
 interface PageRuntimeOptions {
   /** 客户端所有的 "anchor.prop"(表达式绑定):服务端 patch 到达时 warn + 丢弃(所有权公理的防御纵深)。 */
   boundProps?: string[];
+  /** 页面含 ServerRef 绑定时由编译器置 true:订阅 /_shade/push,后台变更自动到达。 */
+  push?: boolean;
 }
 
 interface PageRuntime {
@@ -54,6 +57,15 @@ export function usePageRuntime(options?: PageRuntimeOptions): PageRuntime {
     },
     [boundProps],
   );
+
+  const pushEnabled = options?.push ?? false;
+  useEffect(() => {
+    if (!pushEnabled) {
+      return;
+    }
+    // StrictMode 双挂载安全:cleanup 取消订阅,重连循环随之终止
+    return subscribePatches(applyPatches);
+  }, [pushEnabled, applyPatches]);
 
   const fire = useCallback(
     (handlerId: string, payload: unknown) => {
