@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: '3.13'
+      - run: uv sync --group dev
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pyright
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.10'
+          - os: ubuntu-latest
+            python: '3.13'
+          - os: windows-latest
+            python: '3.13'
+          - os: macos-latest
+            python: '3.13'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python }}
+      - run: uv sync --group dev --group native
+      - run: uv run pytest -q --junitxml=junit.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-${{ matrix.os }}-${{ matrix.python }}
+          path: junit.xml
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: '3.13'
+      - run: uv sync --group dev
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Compile example to generated
+        run: uv run pyshade build login_form.app:app --out frontend/src/generated
+        env:
+          PYTHONPATH: examples/login_form/src
+      - run: pnpm -C frontend install --frozen-lockfile
+      - run: pnpm -C frontend lint
+      - run: pnpm -C frontend build
+      - run: pnpm -C frontend build:testkit
+
+  e2e-native:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: '3.13'
+      - run: uv sync --group dev --group native
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Compile example to generated
+        run: uv run pyshade build login_form.app:app --out frontend/src/generated
+        env:
+          PYTHONPATH: examples/login_form/src
+      - run: pnpm -C frontend install --frozen-lockfile
+      - run: pnpm -C frontend build
+      - run: pnpm -C frontend build:testkit
+      - name: Run native E2E (7 verification cases)
+        run: uv run pytest tests/e2e_native -m e2e_native -q --junitxml=reports/native/junit.xml
+        env:
+          WEBVIEW2_USER_DATA_FOLDER: ${{ runner.temp }}/wv2
+      - name: Publish report to step summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f reports/native/report.md ]; then
+            cat reports/native/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-report
+          path: reports/native/

@@ -1,0 +1,17 @@
+"$schema" = "https://schema.tauri.app/config/2"
+productName = "pyshade-login-demo"
+version = "0.1.0"
+identifier = "cn.yuxiaoqiu.pyshade.login-demo"
+
+[build]
+# 运行时被 tauri_config 覆盖为绝对路径(dev: vite dev server;生产: frontend/dist)
+frontendDist = "./frontend"
+
+[app]
+# csp 缺省即 null:测试 harness 依赖 eval 注入(R9);正式模板项目会收紧
+withGlobalTauri = true
+
+[[app.windows]]
+title = "PyShade Login Demo"
+width = 480
+height = 640

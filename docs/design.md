@@ -148,9 +148,28 @@ Reflex 的教训:编译只覆盖结构层,不自动决定逻辑归属。PyShade 
 - **平台兼容**:各系统 WebView(WebView2 / WKWebView / WebKitGTK)行为差异,需要兼容性测试矩阵。
   已知坑:macOS 上 python-build-standalone 的 `libpython3.dylib` 缺 `@rpath` install_name,需
   `install_name_tool` 修补(pytauri 文档有 workaround);Linux 基线 glibc ≥ 2.35(Ubuntu 22+),
-  WebKitGTK 依赖若打进 wheel 体积约 10MB → 100MB。
+  WebKitGTK 依赖若打进 wheel 体积约 10MB → 100MB;**frontendDist 必须传相对
+  src_tauri_dir 的路径**——Windows 盘符绝对路径(`C:/...`)会被 Tauri 的 untagged
+  `FrontendDist` 反序列化误判为 URL(scheme `c:`),页面静默加载失败(M1 实测踩坑)。
 - **上游 pre-1.0**:pytauri 月度 minor 常带 breaking change,需锁版本、升级走显式任务;
   其 `plugin:pytauri|pyfunc` 单命令拦截面是 ASGI 适配器的硬约束。
+
+### 4.1 真机实测数据(2026-07-14,Windows / WebView2 139,pyshade.testing 自动化采集)
+
+M0 七项验证全部通过(隐藏窗口 `visible:false`,JS 正常执行,`document.visibilityState`
+仍为 visible)。数字由 `tests/e2e_native` 每次 CI 在 windows runner 复测:
+
+- **事件 RTT(进程内 IPC,bench_echo × 100)**:p50 = 1.2ms,p95 = 2.0ms,max = 2.7ms
+  ——验收线 p50<5ms / p95<20ms,实测优一个数量级,对比 NiceGUI WebSocket 路径的核心优势成立。
+- **键入延迟(受控输入 30 字符,合成事件)**:sync p95 = 0.6ms,fence(含 effect flush)
+  p95 = 6ms(验收线 50ms);键入期间 IPC 计数恒为 0,blur 恰触发 1 次事件——0-keystroke-IPC
+  架构目标达成。
+- **headers 透传**:path/query 至 64KB 无截断(验收线 8KB);64 个自定义 header 无丢失。
+- **payload**:双向 32MB 完整(sha256 校验);8MB 下行 78ms / 上行 97ms。
+- **流式竞态**:50 并发快速流(每流 20 帧)零丢帧/乱序/重复——shadeFetch 的帧缓冲设计有效。
+- **空 body**:`Uint8Array(0)` 确认落为 `InvokeBody::Raw`,不被 reject。
+- **窗口关闭中流**:`channel.send` 对已销毁 webview 抛异常,bridge 正常 abort 流,
+  进程稳定无死锁——无需额外防护。
 
 ## 5. 里程碑
 

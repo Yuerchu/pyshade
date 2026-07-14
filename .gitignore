@@ -13,6 +13,10 @@ node_modules/
 
 # PyShade 编译产物(前端 generated 目录)
 frontend/src/generated/
+frontend/dist-testkit/
+
+# 真机测试报告
+reports/
 
 # OS / editor
 .DS_Store
