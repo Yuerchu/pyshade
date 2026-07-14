@@ -10,6 +10,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Windows runner 默认 cp1252,中文输出会 UnicodeEncodeError
+  PYTHONUTF8: '1'
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -19,7 +23,8 @@ jobs:
         with:
           enable-cache: true
           python-version: '3.13'
-      - run: uv sync --group dev
+      # native 组让 pyright 能解析 pytauri_wheel(_harness.py 的惰性 import)
+      - run: uv sync --group dev --group native
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pyright
