@@ -1,0 +1,9 @@
+{
+  "pages": {
+    "LoginPage": [
+      "LoginPage.username.on_change",
+      "LoginPage.remember.on_change",
+      "LoginPage.submit.on_click"
+    ]
+  }
+}
