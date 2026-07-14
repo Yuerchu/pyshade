@@ -72,13 +72,13 @@ reportUnnecessaryTypeIgnoreComment = "error"
 
 [[tool.pyright.executionEnvironments]]
 root = "tests"
-extraPaths = [".", "examples/login_form/src"]
+extraPaths = [".", "examples/login_form/src", "examples/settings_panel/src"]
 # FastAPI 路由函数经装饰器注册;Page 子类定义本身即测试对象(__init_subclass__ 副作用)
 reportUnusedFunction = "none"
 reportUnusedClass = "none"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["examples/login_form/src"]
+pythonpath = ["examples/login_form/src", "examples/settings_panel/src"]
 markers = ["e2e_native: 真机 WebView E2E(需要 pytauri-wheel + 前端构建产物)"]
 addopts = "-m 'not e2e_native'"

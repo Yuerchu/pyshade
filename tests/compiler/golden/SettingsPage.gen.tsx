@@ -56,7 +56,7 @@ export function SettingsPage() {
             {rt.ov("SettingsPage.nickname", "visible", true) && (
               <div className="grid gap-2">
                 <Label htmlFor="SettingsPage.nickname">{rt.ov("SettingsPage.nickname", "label", "昵称")}</Label>
-                <Input id="SettingsPage.nickname" placeholder={rt.ov("SettingsPage.nickname", "placeholder", null)} disabled={rt.ov("SettingsPage.nickname", "disabled", false)} value={nickValue} onChange={(e) => setNickValue(e.target.value)} />
+                <Input id="SettingsPage.nickname" disabled={rt.ov("SettingsPage.nickname", "disabled", false)} value={nickValue} onChange={(e) => setNickValue(e.target.value)} />
               </div>
             )}
             {(nickValue !== "") && (

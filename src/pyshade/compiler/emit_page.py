@@ -82,6 +82,17 @@ def _var_name(anchor: str) -> str:
     return anchor.split('.')[-1].replace('[', '_').replace(']', '')
 
 
+def _opt_prop(node: NodeIR, name: str) -> PropInfo | None:
+    """可选 prop(label/placeholder/title/description):普通值为 None 时不发射属性。
+
+    `rt.ov(..., null)` 会撞上 shadcn 的 `string | undefined` 注解(tsc 报错)。
+    """
+    prop = next((p for p in node.props if p.name == name), None)
+    if prop is not None and prop.binding == 'plain' and prop.default_value is None:
+        return None
+    return prop
+
+
 def _ov(anchor: str, prop: str, default: object) -> str:
     return f'rt.ov({js_string(anchor)}, {js_string(prop)}, {js_value(default)})'
 
@@ -200,8 +211,8 @@ def emit_input(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     setter = ctx.setter(node)
     guarded = _emit_visible_guard(node, w, ctx)
 
-    label = next((p for p in node.props if p.name == 'label'), None)
-    placeholder = next((p for p in node.props if p.name == 'placeholder'), None)
+    label = _opt_prop(node, 'label')
+    placeholder = _opt_prop(node, 'placeholder')
     disabled = next((p for p in node.props if p.name == 'disabled'), None)
     change_event = next((e for e in node.events if e.kind == 'change'), None)
 
@@ -232,8 +243,8 @@ def emit_password_input(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> No
     var = _var_name(node.anchor)
     guarded = _emit_visible_guard(node, w, ctx)
 
-    label = next((p for p in node.props if p.name == 'label'), None)
-    placeholder = next((p for p in node.props if p.name == 'placeholder'), None)
+    label = _opt_prop(node, 'label')
+    placeholder = _opt_prop(node, 'placeholder')
     disabled = next((p for p in node.props if p.name == 'disabled'), None)
 
     w.line('<div className="grid gap-2">')
@@ -265,7 +276,7 @@ def emit_switch(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     setter = ctx.setter(node)
     guarded = _emit_visible_guard(node, w, ctx)
 
-    label = next((p for p in node.props if p.name == 'label'), None)
+    label = _opt_prop(node, 'label')
     disabled = next((p for p in node.props if p.name == 'disabled'), None)
     change_event = next((e for e in node.events if e.kind == 'change'), None)
 
@@ -299,8 +310,8 @@ def emit_card(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     ctx.imports.add('CardContent')
     guarded = _emit_visible_guard(node, w, ctx)
 
-    title = next((p for p in node.props if p.name == 'title'), None)
-    description = next((p for p in node.props if p.name == 'description'), None)
+    title = _opt_prop(node, 'title')
+    description = _opt_prop(node, 'description')
 
     w.line('<Card className="w-full max-w-sm">')
     w.indent()
