@@ -19,7 +19,7 @@ pytestmark = pytest.mark.anyio
 def _build_client() -> httpx.AsyncClient:
     registry = EventRegistry.from_app(app, extra_handlers={'bench_echo': bench_echo})
     fastapi_app = build_fastapi_app(registry, title=app.title)
-    transport = ASGITransport(app=fastapi_app)  # pyright: ignore[reportArgumentType]
+    transport = ASGITransport(app=fastapi_app)
     return httpx.AsyncClient(transport=transport, base_url='http://testserver')
 
 

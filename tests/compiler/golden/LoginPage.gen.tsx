@@ -31,7 +31,7 @@ export function LoginPage() {
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {rt.ov("LoginPage.heading", "visible", true) && (
-              <p>{rt.ov("LoginPage.heading", "text", "")}</p>
+              <p>{rt.ov("LoginPage.heading", "text", "欢迎回来")}</p>
             )}
             {rt.ov("LoginPage.username", "visible", true) && (
               <div className="grid gap-2">

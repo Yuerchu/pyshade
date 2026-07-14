@@ -1,18 +1,33 @@
 """页面级 TSX 发射器:每页一文件(设计 §3.3 / §3.4)。
 
 每组件一个 emitter 函数(注册表分发);受控 Input → useState + onBlur;
-PasswordInput → uncontrolled useRef;每个 prop 显式 rt.ov(anchor, prop, 默认值)。
+PasswordInput → uncontrolled useRef;plain prop 显式 rt.ov(anchor, prop, 默认值)。
+
+M1 所有权公理落点:expr prop 内联 to_js 产物(不包 rt.ov,服务端 patch 不可达);
+client_bind 受控 prop 与 ClientVal 共用 useState(别名);全部客户端所有的
+"anchor.prop" 汇入 usePageRuntime({ boundProps }) 供前端过滤误发 patch。
 """
 
 from collections.abc import Callable
+from typing import Any, cast
 
-from pyshade.compiler.ir import NodeIR, PageIR
+from pyshade.compiler.errors import CompileError
+from pyshade.compiler.ir import NodeIR, PageIR, PropInfo, iter_node_irs
 from pyshade.compiler.writer import TsxWriter, js_bool, js_string, js_value
 from pyshade.components.switch import Switch
+from pyshade.expr import ClientVal, Expr, ExprType, PropRef
+from pyshade.page import anchor_of
 
 EmitFn = Callable[[NodeIR, TsxWriter, '_PageEmitContext'], None]
 
 EMITTERS: dict[str, EmitFn] = {}
+
+_TS_TYPE: dict[ExprType, str] = {
+    ExprType.BOOL: 'boolean',
+    ExprType.STR: 'string',
+    ExprType.INT: 'number',
+    ExprType.FLOAT: 'number',
+}
 
 
 def register(tag: str) -> Callable[[EmitFn], EmitFn]:
@@ -30,12 +45,31 @@ class _PageEmitContext:
         self.imports: set[str] = set()
         self.controlled_inputs: list[NodeIR] = []
         self.sensitive_inputs: list[NodeIR] = []
+        self.client_vals: list[tuple[str, ClientVal[Any]]] = []
+        self.scope: dict[Expr[Any], str] = {}
+        self.alias: dict[str, str] = {}
+        """受控组件 anchor → 绑定的 ClientVal 字段名(共用其 useState)。"""
+        self.bound_props: list[str] = []
+        """客户端所有的 'anchor.prop'(expr/client_bind),文档序。"""
 
     def add_controlled(self, node: NodeIR) -> None:
         self.controlled_inputs.append(node)
 
     def add_sensitive(self, node: NodeIR) -> None:
         self.sensitive_inputs.append(node)
+
+    def value_var(self, node: NodeIR) -> str:
+        base = self.alias.get(node.anchor) or _var_name(node.anchor)
+        return f'{base}Value'
+
+    def setter(self, node: NodeIR) -> str:
+        base = self.alias.get(node.anchor) or _var_name(node.anchor)
+        return f'set{base.capitalize()}Value'
+
+    def prop_js(self, node: NodeIR, prop: PropInfo) -> str:
+        if prop.binding == 'expr':
+            return cast('Expr[Any]', prop.default_value).to_js(self.scope)
+        return _ov(node.anchor, prop.name, prop.default_value)
 
 
 def _var_name(anchor: str) -> str:
@@ -46,13 +80,55 @@ def _ov(anchor: str, prop: str, default: object) -> str:
     return f'rt.ov({js_string(anchor)}, {js_string(prop)}, {js_value(default)})'
 
 
-def _emit_visible_guard(node: NodeIR, w: TsxWriter) -> tuple[bool, bool]:
+def _prepare_bindings(page_ir: PageIR, ctx: _PageEmitContext) -> None:
+    """预扫描:构建 ClientVal scope、受控别名、boundProps(checks 已保证合法性)。"""
+    ctx.client_vals = list(page_ir.client_vals.items())
+    val_names: dict[int, str] = {id(val): name for name, val in ctx.client_vals}
+    for name, val in ctx.client_vals:
+        ctx.scope[val] = f'{name}Value'
+
+    nodes = iter_node_irs(page_ir)
+    for node in nodes:
+        for prop in node.props:
+            if prop.binding == 'client_bind':
+                val = cast('ClientVal[Any]', prop.default_value)
+                name = val_names.get(id(val))
+                if name is None:
+                    raise CompileError(f"{node.anchor}.{prop.name}: 绑定的 ClientVal 未声明为本页面字段")
+                ctx.alias[node.anchor] = name
+
+    for node in nodes:
+        for prop in node.props:
+            if prop.binding not in ('expr', 'client_bind'):
+                continue
+            ctx.bound_props.append(f'{node.anchor}.{prop.name}')
+            if prop.binding != 'expr':
+                continue
+            for leaf in cast('Expr[Any]', prop.default_value).refs():
+                if leaf in ctx.scope:
+                    continue
+                if isinstance(leaf, PropRef):
+                    anchor = anchor_of(leaf.component)
+                    base = ctx.alias.get(anchor) or _var_name(anchor)
+                    ctx.scope[leaf] = f'{base}Value'
+                else:
+                    raise CompileError(f"{node.anchor}.{prop.name}: 引用的 ClientVal 未声明为本页面字段")
+
+
+def _emit_visible_guard(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> bool:
     visible_prop = next((p for p in node.props if p.name == 'visible'), None)
-    if visible_prop is not None and visible_prop.default_value is True:
+    if visible_prop is None:
+        return False
+    if visible_prop.binding == 'expr':
+        js = cast('Expr[Any]', visible_prop.default_value).to_js(ctx.scope)
+        w.line(f'{{({js}) && (')
+        w.indent()
+        return True
+    if visible_prop.default_value is True:
         w.line(f'{{{_ov(node.anchor, "visible", True)} && (')
         w.indent()
-        return True, True
-    return False, False
+        return True
+    return False
 
 
 def _close_visible_guard(guarded: bool, w: TsxWriter) -> None:
@@ -63,17 +139,19 @@ def _close_visible_guard(guarded: bool, w: TsxWriter) -> None:
 
 @register('Text')
 def emit_text(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
-    guarded, _ = _emit_visible_guard(node, w)
+    guarded = _emit_visible_guard(node, w, ctx)
     muted = next((p for p in node.props if p.name == 'muted'), None)
+    text = next((p for p in node.props if p.name == 'text'), None)
     class_name = ' className="text-muted-foreground"' if muted and muted.default_value else ''
-    w.line(f'<p{class_name}>{{{_ov(node.anchor, "text", "")}}}</p>')
+    text_js = ctx.prop_js(node, text) if text else js_string('')
+    w.line(f'<p{class_name}>{{{text_js}}}</p>')
     _close_visible_guard(guarded, w)
 
 
 @register('Button')
 def emit_button(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     ctx.imports.add('Button')
-    guarded, _ = _emit_visible_guard(node, w)
+    guarded = _emit_visible_guard(node, w, ctx)
     variant = next((p for p in node.props if p.name == 'variant'), None)
     size = next((p for p in node.props if p.name == 'size'), None)
     disabled = next((p for p in node.props if p.name == 'disabled'), None)
@@ -84,11 +162,11 @@ def emit_button(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     is_submit = submit is not None and submit.default_value is True
     attrs: list[str] = []
     if variant:
-        attrs.append(f'variant={{{_ov(node.anchor, "variant", variant.default_value)}}}')
+        attrs.append(f'variant={{{ctx.prop_js(node, variant)}}}')
     if size:
-        attrs.append(f'size={{{_ov(node.anchor, "size", size.default_value)}}}')
+        attrs.append(f'size={{{ctx.prop_js(node, size)}}}')
     if disabled:
-        attrs.append(f'disabled={{{_ov(node.anchor, "disabled", disabled.default_value)}}}')
+        attrs.append(f'disabled={{{ctx.prop_js(node, disabled)}}}')
     if click_event:
         hid = js_string(click_event.handler_id)
         if is_submit:
@@ -96,7 +174,7 @@ def emit_button(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
         else:
             attrs.append(f'onClick={{() => rt.fire({hid}, {{}})}}')
 
-    text_val = _ov(node.anchor, 'text', text.default_value if text else '')
+    text_val = ctx.prop_js(node, text) if text else js_string('')
     w.line(f'<Button {" ".join(attrs)}>')
     w.indent()
     w.line(f'{{{text_val}}}')
@@ -110,8 +188,9 @@ def emit_input(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     ctx.imports.add('Input')
     ctx.imports.add('Label')
     ctx.add_controlled(node)
-    var = _var_name(node.anchor)
-    guarded, _ = _emit_visible_guard(node, w)
+    var = ctx.value_var(node)
+    setter = ctx.setter(node)
+    guarded = _emit_visible_guard(node, w, ctx)
 
     label = next((p for p in node.props if p.name == 'label'), None)
     placeholder = next((p for p in node.props if p.name == 'placeholder'), None)
@@ -121,16 +200,16 @@ def emit_input(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     w.line('<div className="grid gap-2">')
     w.indent()
     if label:
-        w.line(f'<Label htmlFor={js_string(node.anchor)}>{{{_ov(node.anchor, "label", label.default_value)}}}</Label>')
+        w.line(f'<Label htmlFor={js_string(node.anchor)}>{{{ctx.prop_js(node, label)}}}</Label>')
     attrs: list[str] = [f'id={js_string(node.anchor)}']
     if placeholder:
-        attrs.append(f'placeholder={{{_ov(node.anchor, "placeholder", placeholder.default_value)}}}')
+        attrs.append(f'placeholder={{{ctx.prop_js(node, placeholder)}}}')
     if disabled:
-        attrs.append(f'disabled={{{_ov(node.anchor, "disabled", disabled.default_value)}}}')
-    attrs.append(f'value={{{var}Value}}')
-    attrs.append(f'onChange={{(e) => set{var.capitalize()}Value(e.target.value)}}')
+        attrs.append(f'disabled={{{ctx.prop_js(node, disabled)}}}')
+    attrs.append(f'value={{{var}}}')
+    attrs.append(f'onChange={{(e) => {setter}(e.target.value)}}')
     if change_event:
-        attrs.append(f'onBlur={{() => rt.fire({js_string(change_event.handler_id)}, {{ value: {var}Value }})}}')
+        attrs.append(f'onBlur={{() => rt.fire({js_string(change_event.handler_id)}, {{ value: {var} }})}}')
     w.line(f'<Input {" ".join(attrs)} />')
     w.dedent()
     w.line('</div>')
@@ -143,7 +222,7 @@ def emit_password_input(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> No
     ctx.imports.add('Label')
     ctx.add_sensitive(node)
     var = _var_name(node.anchor)
-    guarded, _ = _emit_visible_guard(node, w)
+    guarded = _emit_visible_guard(node, w, ctx)
 
     label = next((p for p in node.props if p.name == 'label'), None)
     placeholder = next((p for p in node.props if p.name == 'placeholder'), None)
@@ -152,7 +231,7 @@ def emit_password_input(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> No
     w.line('<div className="grid gap-2">')
     w.indent()
     if label:
-        w.line(f'<Label htmlFor={js_string(node.anchor)}>{{{_ov(node.anchor, "label", label.default_value)}}}</Label>')
+        w.line(f'<Label htmlFor={js_string(node.anchor)}>{{{ctx.prop_js(node, label)}}}</Label>')
     attrs: list[str] = [
         f'id={js_string(node.anchor)}',
         'type="password"',
@@ -160,9 +239,9 @@ def emit_password_input(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> No
         f'ref={{{var}Ref}}',
     ]
     if placeholder:
-        attrs.append(f'placeholder={{{_ov(node.anchor, "placeholder", placeholder.default_value)}}}')
+        attrs.append(f'placeholder={{{ctx.prop_js(node, placeholder)}}}')
     if disabled:
-        attrs.append(f'disabled={{{_ov(node.anchor, "disabled", disabled.default_value)}}}')
+        attrs.append(f'disabled={{{ctx.prop_js(node, disabled)}}}')
     w.line(f'<Input {" ".join(attrs)} />')
     w.dedent()
     w.line('</div>')
@@ -174,8 +253,9 @@ def emit_switch(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     ctx.imports.add('Switch')
     ctx.imports.add('Label')
     ctx.add_controlled(node)
-    var = _var_name(node.anchor)
-    guarded, _ = _emit_visible_guard(node, w)
+    var = ctx.value_var(node)
+    setter = ctx.setter(node)
+    guarded = _emit_visible_guard(node, w, ctx)
 
     label = next((p for p in node.props if p.name == 'label'), None)
     disabled = next((p for p in node.props if p.name == 'disabled'), None)
@@ -186,12 +266,12 @@ def emit_switch(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
 
     attrs: list[str] = [
         f'id={js_string(node.anchor)}',
-        f'checked={{{var}Value}}',
+        f'checked={{{var}}}',
     ]
     if disabled:
-        attrs.append(f'disabled={{{_ov(node.anchor, "disabled", disabled.default_value)}}}')
+        attrs.append(f'disabled={{{ctx.prop_js(node, disabled)}}}')
 
-    change_parts: list[str] = [f'set{var.capitalize()}Value(checked)']
+    change_parts: list[str] = [f'{setter}(checked)']
     if change_event:
         change_parts.append(f'rt.fire({js_string(change_event.handler_id)}, {{ value: checked }})')
     change_body = '; '.join(change_parts)
@@ -199,7 +279,7 @@ def emit_switch(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
 
     w.line(f'<Switch {" ".join(attrs)} />')
     if label:
-        w.line(f'<Label htmlFor={js_string(node.anchor)}>{{{_ov(node.anchor, "label", label.default_value)}}}</Label>')
+        w.line(f'<Label htmlFor={js_string(node.anchor)}>{{{ctx.prop_js(node, label)}}}</Label>')
     w.dedent()
     w.line('</div>')
     _close_visible_guard(guarded, w)
@@ -209,7 +289,7 @@ def emit_switch(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
 def emit_card(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     ctx.imports.add('Card')
     ctx.imports.add('CardContent')
-    guarded, _ = _emit_visible_guard(node, w)
+    guarded = _emit_visible_guard(node, w, ctx)
 
     title = next((p for p in node.props if p.name == 'title'), None)
     description = next((p for p in node.props if p.name == 'description'), None)
@@ -222,11 +302,10 @@ def emit_card(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
         w.indent()
         if title:
             ctx.imports.add('CardTitle')
-            w.line(f'<CardTitle>{{{_ov(node.anchor, "title", title.default_value)}}}</CardTitle>')
+            w.line(f'<CardTitle>{{{ctx.prop_js(node, title)}}}</CardTitle>')
         if description:
             ctx.imports.add('CardDescription')
-            desc_ov = _ov(node.anchor, 'description', description.default_value)
-            w.line(f'<CardDescription>{{{desc_ov}}}</CardDescription>')
+            w.line(f'<CardDescription>{{{ctx.prop_js(node, description)}}}</CardDescription>')
         w.dedent()
         w.line('</CardHeader>')
     w.line('<CardContent className="flex flex-col gap-4">')
@@ -251,6 +330,7 @@ def emit_node(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
 def emit_page(page_ir: PageIR) -> str:
     """生成完整的页面 TSX 文件。"""
     ctx = _PageEmitContext()
+    _prepare_bindings(page_ir, ctx)
     body_writer = TsxWriter()
 
     for root in page_ir.roots:
@@ -259,7 +339,7 @@ def emit_page(page_ir: PageIR) -> str:
     w = TsxWriter()
     w.line('/* 由 pyshade 编译器生成 — 请勿手改。 */')
     react_imports: list[str] = []
-    if ctx.controlled_inputs:
+    if ctx.controlled_inputs or ctx.client_vals:
         react_imports.append('useState')
     if ctx.sensitive_inputs:
         react_imports.append('useRef')
@@ -289,34 +369,52 @@ def emit_page(page_ir: PageIR) -> str:
     w.line()
     w.line(f'export function {page_ir.name}() {{')
     w.indent()
-    w.line('const rt = usePageRuntime();')
+    if ctx.bound_props:
+        bound = ', '.join(js_string(p) for p in ctx.bound_props)
+        w.line(f'const rt = usePageRuntime({{ boundProps: [{bound}] }});')
+    else:
+        w.line('const rt = usePageRuntime();')
     w.line()
 
+    for name, val in ctx.client_vals:
+        ts_type = _TS_TYPE[val.type]
+        w.line(f'const [{name}Value, set{name.capitalize()}Value] = useState<{ts_type}>({js_value(val.default)});')
+
     for node in ctx.controlled_inputs:
+        if node.anchor in ctx.alias:
+            continue  # client_bind:与 ClientVal 共用 useState
         var = _var_name(node.anchor)
         is_switch = isinstance(node.component, Switch)
         if is_switch:
             checked = next((p for p in node.props if p.name == 'checked'), None)
-            default_val = js_bool(checked.default_value if checked else False)
+            default_val = js_bool(bool(checked.default_value) if checked else False)
             w.line(f'const [{var}Value, set{var.capitalize()}Value] = useState<boolean>({default_val});')
         else:
             value = next((p for p in node.props if p.name == 'value'), None)
-            default_val = js_string(value.default_value if value else '')
+            default_val = js_string(str(value.default_value) if value else '')
             w.line(f'const [{var}Value, set{var.capitalize()}Value] = useState<string>({default_val});')
 
     for node in ctx.sensitive_inputs:
         var = _var_name(node.anchor)
         w.line(f'const {var}Ref = useRef<HTMLInputElement>(null);')
 
-    if ctx.controlled_inputs or ctx.sensitive_inputs:
+    if ctx.controlled_inputs or ctx.sensitive_inputs or ctx.client_vals:
         w.line()
-        controlled_entries = [f'{_var_name(n.anchor)}: {_var_name(n.anchor)}Value' for n in ctx.controlled_inputs]
+        controlled_entries = [f'{_var_name(n.anchor)}: {ctx.value_var(n)}' for n in ctx.controlled_inputs]
+        client_val_entries = [f'{name}: {name}Value' for name, _val in ctx.client_vals]
         sensitive_entries = [
             f'{_var_name(n.anchor)}: {_var_name(n.anchor)}Ref.current?.value ?? ""' for n in ctx.sensitive_inputs
         ]
-        w.line('const collectValues = (includeSensitive: boolean): Record<string, string | boolean> => ({')
+        value_union = 'string | boolean'
+        if any(val.type in (ExprType.INT, ExprType.FLOAT) for _name, val in ctx.client_vals):
+            value_union += ' | number'
+        # 无敏感输入时参数未使用,下划线前缀豁免 noUnusedParameters
+        param = 'includeSensitive' if sensitive_entries else '_includeSensitive'
+        w.line(f'const collectValues = ({param}: boolean): Record<string, {value_union}> => ({{')
         w.indent()
         for entry in controlled_entries:
+            w.line(f'{entry},')
+        for entry in client_val_entries:
             w.line(f'{entry},')
         if sensitive_entries:
             w.line(f'...(includeSensitive ? {{ {", ".join(sensitive_entries)} }} : {{}}),')

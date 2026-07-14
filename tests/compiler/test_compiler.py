@@ -68,7 +68,7 @@ class TestIR:
 class TestChecks:
     def test_js_reserved_word_rejected(self) -> None:
         class BadPage(Page):
-            delete = Button('bad')  # pyright: ignore[reportAssignmentType]
+            delete = Button('bad')
 
         ir = build_page_ir(BadPage)
         with pytest.raises(CompileError, match='保留字'):
@@ -95,7 +95,7 @@ class TestEmitTypes:
         assert '"destructive"' in ts
 
 
-def _golden_compare(name: str, content: str) -> None:
+def golden_compare(name: str, content: str) -> None:
     path = GOLDEN_DIR / name
     if UPDATE_GOLDEN:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -118,26 +118,26 @@ class TestGolden:
         assert 'passwordRef' in tsx
         assert 'usernameValue' in tsx
         assert 'LoginPage.submit.on_click' in tsx
-        _golden_compare('LoginPage.gen.tsx', tsx)
+        golden_compare('LoginPage.gen.tsx', tsx)
 
     def test_app_gen(self) -> None:
         ir = build_page_ir(LoginPage)
         tsx = emit_app([ir])
         assert 'LoginPage' in tsx
-        _golden_compare('app.gen.tsx', tsx)
+        golden_compare('app.gen.tsx', tsx)
 
     def test_manifest_json(self) -> None:
         ir = build_page_ir(LoginPage)
         manifest = emit_manifest([ir])
         data = json.loads(manifest)
         assert 'LoginPage.submit.on_click' in data['pages']['LoginPage']
-        _golden_compare('manifest.json', manifest)
+        golden_compare('manifest.json', manifest)
 
     def test_types_gen(self) -> None:
         ir = build_page_ir(LoginPage)
         enums = collect_enums([ir])
         ts = emit_types(enums)
-        _golden_compare('types.gen.ts', ts)
+        golden_compare('types.gen.ts', ts)
 
 
 class TestCompileApp:

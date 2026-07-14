@@ -1,9 +1,18 @@
-"""编译期校验(设计 §3.5):事件签名、敏感组件断言、命名冲突。"""
+"""编译期校验(设计 §3.5):事件签名、敏感组件断言、命名冲突。
+
+M1 新增表达式 G 规则(格式沿用"页面.字段 → 错误 → 修复建议"):
+死引用/跨页引用/类型不匹配/敏感源/ClientVal 唯一写者/零绑定告警/变量名冲突。
+"""
+
+import warnings
+from dataclasses import dataclass, field
+from typing import Any, cast, get_args
 
 from pyshade.compiler.errors import CompileError
-from pyshade.compiler.ir import NodeIR, PageIR
-from pyshade.components.base import EventSpec
+from pyshade.compiler.ir import NodeIR, PageIR, PropInfo, iter_node_irs
+from pyshade.components.base import Component, EventSpec, is_sensitive, read_anchor
 from pyshade.events import validate_handler
+from pyshade.expr import ClientVal, Expr, ExprType, PropRef, read_owner
 
 _JS_RESERVED = frozenset(
     {
@@ -53,14 +62,26 @@ _JS_RESERVED = frozenset(
 )
 
 
+@dataclass
+class _ExprState:
+    """页面级 ClientVal 记账:唯一写者与零绑定告警的依据。"""
+
+    bind_sites: dict[int, list[str]] = field(default_factory=dict[int, list[str]])
+    ref_sites: dict[int, str] = field(default_factory=dict[int, str])
+    vals_by_id: dict[int, str] = field(default_factory=dict[int, str])
+
+
 def check_page_ir(page_ir: PageIR) -> None:
     """对整个页面 IR 做编译期校验;失败抛 CompileError。"""
     seen_anchors: set[str] = set()
+    state = _ExprState(vals_by_id={id(val): name for name, val in page_ir.client_vals.items()})
     for root in page_ir.roots:
-        _check_node(root, page_ir.name, seen_anchors)
+        _check_node(root, page_ir.name, seen_anchors, state)
+    _check_client_val_writers(page_ir, state)
+    _check_var_collisions(page_ir)
 
 
-def _check_node(node: NodeIR, page_name: str, seen: set[str]) -> None:
+def _check_node(node: NodeIR, page_name: str, seen: set[str], state: _ExprState) -> None:
     if node.anchor in seen:
         raise CompileError(f"{node.anchor}: anchor 重复(内部错误)")
     seen.add(node.anchor)
@@ -68,9 +89,14 @@ def _check_node(node: NodeIR, page_name: str, seen: set[str]) -> None:
     _check_naming(node, page_name)
     _check_sensitive(node)
     _check_event_handlers(node)
+    for prop in node.props:
+        if prop.binding == 'client_bind':
+            _check_client_bind(node, prop, page_name, state)
+        elif prop.binding == 'expr':
+            _check_expr_prop(node, prop, page_name, state)
 
     for child in node.children:
-        _check_node(child, page_name, seen)
+        _check_node(child, page_name, seen, state)
 
 
 def _check_naming(node: NodeIR, page_name: str) -> None:
@@ -97,3 +123,107 @@ def _check_event_handlers(node: NodeIR) -> None:
             validate_handler(handler, owner=event.handler_id)
         except Exception as exc:
             raise CompileError(str(exc)) from exc
+
+
+def _expected_expr_type(component: Component, prop: str) -> ExprType | None:
+    """从 prop 注解(`T | Expr[T]` union)提取裸标量类型;取 union 首个标量成员。"""
+    annotation: object = type(component).model_fields[prop].annotation
+    for arg in get_args(annotation) or (annotation,):
+        if arg is bool:
+            return ExprType.BOOL
+        if arg is str:
+            return ExprType.STR
+        if arg is int:
+            return ExprType.INT
+        if arg is float:
+            return ExprType.FLOAT
+    return None
+
+
+def _site(node: NodeIR, prop: PropInfo) -> str:
+    return f'{node.anchor}.{prop.name}'
+
+
+def _check_type_match(node: NodeIR, prop: PropInfo, expr: 'Expr[Any]') -> None:
+    expected = _expected_expr_type(node.component, prop.name)
+    if expected is not None and expr.type is not expected:
+        raise CompileError(
+            f"{_site(node, prop)}: 表达式类型 {expr.type.value} 与 prop 类型 {expected.value} 不匹配 → "
+            f"请让表达式产出 {expected.value}(比较/逻辑组合产出 bool,`+` 拼接产出 str)"
+        )
+
+
+def _check_client_bind(node: NodeIR, prop: PropInfo, page_name: str, state: _ExprState) -> None:
+    val = cast('ClientVal[Any]', prop.default_value)
+    _check_owned_by_page(node, prop, val, page_name)
+    _check_type_match(node, prop, val)
+    state.bind_sites.setdefault(id(val), []).append(_site(node, prop))
+
+
+def _check_expr_prop(node: NodeIR, prop: PropInfo, page_name: str, state: _ExprState) -> None:
+    expr = cast('Expr[Any]', prop.default_value)
+    _check_type_match(node, prop, expr)
+    for leaf in expr.refs():
+        if isinstance(leaf, ClientVal):
+            _check_owned_by_page(node, prop, leaf, page_name)
+            state.ref_sites.setdefault(id(leaf), _site(node, prop))
+        else:
+            _check_prop_ref(node, prop, leaf, page_name)
+
+
+def _check_owned_by_page(node: NodeIR, prop: PropInfo, val: 'ClientVal[Any]', page_name: str) -> None:
+    owner = read_owner(val)
+    if owner is None:
+        raise CompileError(
+            f"{_site(node, prop)}: 引用的 ClientVal 未声明为页面字段 → "
+            f"请在 {page_name} 类体中以字段形式声明(如 `thinking = ClientVal(True)`)后再引用"
+        )
+    if not owner.startswith(f'{page_name}.'):
+        raise CompileError(
+            f"{_site(node, prop)}: 引用了其他页面的 ClientVal({owner})→ "
+            "客户端状态不跨页面,请在本页面声明独立的 ClientVal"
+        )
+
+
+def _check_prop_ref(node: NodeIR, prop: PropInfo, ref: 'PropRef[Any]', page_name: str) -> None:
+    if is_sensitive(ref.component):
+        raise CompileError(
+            f"{_site(node, prop)}: 引用了敏感组件 {type(ref.component).__name__} 的值 → "
+            "敏感值只随 submit=True 的事件跨界,不能作为表达式源(design.md §3.8)"
+        )
+    anchor = read_anchor(ref.component)
+    if anchor is None:
+        raise CompileError(
+            f"{_site(node, prop)}: value_of() 引用的 {type(ref.component).__name__} 未挂载到任何 Page → "
+            "请将该组件声明为页面字段或放入页面容器"
+        )
+    if not anchor.startswith(f'{page_name}.'):
+        raise CompileError(f"{_site(node, prop)}: value_of() 跨页面引用了 {anchor} → 表达式只能引用本页面组件")
+
+
+def _check_client_val_writers(page_ir: PageIR, state: _ExprState) -> None:
+    for name, val in page_ir.client_vals.items():
+        sites = state.bind_sites.get(id(val), [])
+        if len(sites) > 1:
+            raise CompileError(
+                f"{page_ir.name}.{name}: ClientVal 有多个写者({', '.join(sites)})→ "
+                "受控绑定即唯一写者,请拆成多个 ClientVal 或只保留一个绑定"
+            )
+        if not sites and id(val) in state.ref_sites:
+            warnings.warn(
+                f"{page_ir.name}.{name} 被 {state.ref_sites[id(val)]} 引用但没有任何受控组件绑定,"
+                "值恒为默认值;若非有意的常量,请绑定到受控组件(checked=/value=)",
+                UserWarning,
+                stacklevel=2,
+            )
+
+
+def _check_var_collisions(page_ir: PageIR) -> None:
+    """ClientVal 字段名与匿名组件路径变量名(如 card_0)冲突时,生成的 useState 变量会重名。"""
+    taken: dict[str, str] = {}
+    for node in iter_node_irs(page_ir):
+        local = node.anchor.split('.')[-1].replace('[', '_').replace(']', '')
+        taken[local] = node.anchor
+    for name in page_ir.client_vals:
+        if name in taken:
+            raise CompileError(f"{page_ir.name}.{name}: ClientVal 与组件 {taken[name]} 生成的变量名冲突 → 请改名")

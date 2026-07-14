@@ -66,7 +66,8 @@ class TestUpdate:
 
     def test_original_component_untouched(self) -> None:
         Update(DemoPage.greeting, text='changed')
-        assert DemoPage.greeting.text == ''
+        text = DemoPage.greeting.text
+        assert isinstance(text, str) and text == ''
 
 
 class TestValidateHandler:

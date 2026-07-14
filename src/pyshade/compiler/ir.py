@@ -1,10 +1,19 @@
-"""编译器中间表示:将 Page 子类的组件树转换为 IR 节点树(设计 §3.1 三分法)。"""
+"""编译器中间表示:将 Page 子类的组件树转换为 IR 节点树(设计 §3.1 三分法)。
+
+M1 起 PropInfo 携带 binding 分类(所有权公理,design.md §3.4):
+plain=服务端所有(rt.ov 可 patch)/ expr=客户端所有(内联 JS)/
+client_bind=受控 prop 绑定 ClientVal(共用 useState,唯一写者)/
+server_ref=ServerState 字段(Phase 3)。
+"""
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
-from pyshade.components.base import Component, EventSpec, is_sensitive
+from pyshade.components.base import Component, ControlledMixin, EventSpec, controlled_prop_of, is_sensitive
+from pyshade.expr import ClientVal, Expr
 from pyshade.page import Page, anchor_of, iter_children
+
+PropBinding = Literal['plain', 'expr', 'client_bind', 'server_ref']
 
 
 @dataclass(frozen=True, slots=True)
@@ -12,6 +21,7 @@ class PropInfo:
     name: str
     default_value: Any
     is_enum: bool
+    binding: PropBinding = 'plain'
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +48,18 @@ def _is_enum_field(value: object) -> bool:
     return isinstance(value, Enum)
 
 
+def _classify_binding(component: Component, name: str, value: object) -> PropBinding:
+    if not isinstance(value, Expr):
+        return 'plain'
+    if (
+        isinstance(value, ClientVal)
+        and isinstance(component, ControlledMixin)
+        and name == controlled_prop_of(component)
+    ):
+        return 'client_bind'
+    return 'expr'
+
+
 def build_node_ir(component: Component) -> NodeIR:
     """递归构建单个组件的 IR 节点。"""
     anchor = anchor_of(component)
@@ -55,7 +77,14 @@ def build_node_ir(component: Component) -> NodeIR:
         if name == 'children':
             continue
         value = getattr(component, name)
-        props.append(PropInfo(name=name, default_value=value, is_enum=_is_enum_field(value)))
+        props.append(
+            PropInfo(
+                name=name,
+                default_value=value,
+                is_enum=_is_enum_field(value),
+                binding=_classify_binding(component, name, value),
+            )
+        )
 
     children_ir = [build_node_ir(child) for child in iter_children(component)]
 
@@ -75,8 +104,23 @@ class PageIR:
     name: str
     page: type[Page]
     roots: list[NodeIR]
+    client_vals: dict[str, ClientVal[Any]] = field(default_factory=dict[str, ClientVal[Any]])
 
 
 def build_page_ir(page: type[Page]) -> PageIR:
     roots = [build_node_ir(root) for root in page.__shade_roots__]
-    return PageIR(name=page.__name__, page=page, roots=roots)
+    return PageIR(name=page.__name__, page=page, roots=roots, client_vals=dict(page.__shade_client_vals__))
+
+
+def iter_node_irs(page_ir: PageIR) -> 'list[NodeIR]':
+    """前序展开页面全部 IR 节点(checks 与 emit 共用)。"""
+    out: list[NodeIR] = []
+
+    def walk(node: NodeIR) -> None:
+        out.append(node)
+        for child in node.children:
+            walk(child)
+
+    for root in page_ir.roots:
+        walk(root)
+    return out

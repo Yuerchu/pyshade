@@ -1,26 +1,31 @@
-from typing import Annotated, Any
+from typing import Annotated, Any, ClassVar
 
-from pyshade.components.base import Component, EventSpec, Handler
+from pyshade.components.base import Component, ControlledMixin, EventSpec, Handler
+from pyshade.expr import ClientVal, Expr
 
 
-class Switch(Component):
-    """shadcn Switch;切换是离散显式操作,每次都回传合法。"""
+class Switch(Component, ControlledMixin[bool]):
+    """shadcn Switch;切换是离散显式操作,每次都回传合法。
+
+    checked 绑定 ClientVal[bool] 时该 ClientVal 获得唯一写者(共用 useState)。
+    """
 
     _shade_tag = 'Switch'
+    _controlled_prop: ClassVar[str] = 'checked'
 
     label: str | None = None
-    checked: bool = False
-    disabled: bool = False
+    checked: bool | ClientVal[bool] = False
+    disabled: bool | Expr[bool] = False
     on_change: Annotated[Handler | None, EventSpec('change')] = None
 
     def __init__(
         self,
         *,
         label: str | None = None,
-        checked: bool = False,
-        disabled: bool = False,
+        checked: bool | ClientVal[bool] = False,
+        disabled: bool | Expr[bool] = False,
         on_change: Handler | None = None,
-        visible: bool = True,
+        visible: bool | Expr[bool] = True,
     ) -> None:
         data: dict[str, Any] = {
             'label': label,

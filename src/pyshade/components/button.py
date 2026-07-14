@@ -2,6 +2,7 @@ from typing import Annotated, Any
 
 from pyshade.components.base import Component, EventSpec, Handler
 from pyshade.components.enums import ButtonSize, ButtonVariant
+from pyshade.expr import Expr
 
 
 class Button(Component):
@@ -12,7 +13,7 @@ class Button(Component):
     text: str = ''
     variant: ButtonVariant = ButtonVariant.DEFAULT
     size: ButtonSize = ButtonSize.DEFAULT
-    disabled: bool = False
+    disabled: bool | Expr[bool] = False
     submit: bool = False
     on_click: Annotated[Handler | None, EventSpec('click')] = None
 
@@ -22,10 +23,10 @@ class Button(Component):
         *,
         variant: ButtonVariant = ButtonVariant.DEFAULT,
         size: ButtonSize = ButtonSize.DEFAULT,
-        disabled: bool = False,
+        disabled: bool | Expr[bool] = False,
         submit: bool = False,
         on_click: Handler | None = None,
-        visible: bool = True,
+        visible: bool | Expr[bool] = True,
     ) -> None:
         data: dict[str, Any] = {
             'text': text,

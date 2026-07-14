@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from typing import Any, ClassVar, cast
 
 from pyshade.components.base import Component, EventSpec, read_anchor, write_anchor
+from pyshade.expr import ClientVal, read_owner, write_owner
 
 
 class LayoutError(Exception):
@@ -108,14 +109,39 @@ def _resolve_layout(page_name: str, named: list[tuple[str, Component]]) -> tuple
     return roots, anchors
 
 
+def _resolve_client_vals(page_name: str, named: list[tuple[str, ClientVal[Any]]]) -> dict[str, ClientVal[Any]]:
+    by_id: dict[int, str] = {}
+    for name, val in named:
+        if id(val) in by_id:
+            raise LayoutError(f"{page_name}.{name} 与 {page_name}.{by_id[id(val)]} 是同一 ClientVal 实例;请分别创建")
+        by_id[id(val)] = name
+
+    for name, val in named:
+        existing = read_owner(val)
+        if existing is not None:
+            raise LayoutError(f"{page_name}.{name} 已属于 {existing};ClientVal 不可跨页面复用")
+
+    out: dict[str, ClientVal[Any]] = {}
+    for name, val in named:
+        write_owner(val, f'{page_name}.{name}')
+        out[name] = val
+    return out
+
+
 class Page:
-    """声明式页面基类:子类类体中的 Component 实例字段即页面结构。"""
+    """声明式页面基类:子类类体中的 Component 实例字段即页面结构,ClientVal 字段即客户端状态。"""
 
     __shade_roots__: ClassVar[list[Component]] = []
     __shade_anchors__: ClassVar[dict[str, Component]] = {}
+    __shade_client_vals__: ClassVar[dict[str, ClientVal[Any]]] = {}
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
+        named_vals = cast(
+            'list[tuple[str, ClientVal[Any]]]',
+            [(name, value) for name, value in vars(cls).items() if isinstance(value, ClientVal)],
+        )
+        cls.__shade_client_vals__ = _resolve_client_vals(cls.__name__, named_vals)
         named = [(name, value) for name, value in vars(cls).items() if isinstance(value, Component)]
         roots, anchors = _resolve_layout(cls.__name__, named)
         cls.__shade_roots__ = roots

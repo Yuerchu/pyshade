@@ -32,7 +32,7 @@ def _build(actions: FakeActions | None = None) -> tuple[httpx.AsyncClient, Repor
     app = FastAPI()
     collector = ReportCollector()
     mount_test_routes(app, collector, actions=actions)
-    transport = ASGITransport(app=app)  # pyright: ignore[reportArgumentType]
+    transport = ASGITransport(app=app)
     return httpx.AsyncClient(transport=transport, base_url='http://t'), collector
 
 

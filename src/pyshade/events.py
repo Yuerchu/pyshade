@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from pyshade.app import ShadeApp
 from pyshade.components.base import Component, EventSpec, Handler
+from pyshade.expr import Expr
 from pyshade.page import Page, anchor_of, iter_nodes
 
 
@@ -25,11 +26,12 @@ class EventHandlerError(Exception):
 class EventContext(BaseModel):
     """事件回传给 Python handler 的统一入参。
 
-    values:页面命名输入的快照;敏感值仅 submit=True 的事件携带(design.md §3.8)。
+    values:页面命名输入的快照(含 ClientVal 条目,数值型 ClientVal 为 int/float);
+    敏感值仅 submit=True 的事件携带(design.md §3.8)。
     value:change 类事件的新值。
     """
 
-    values: dict[str, str | bool] = {}
+    values: dict[str, str | bool | int | float] = {}
     value: str | bool | None = None
 
 
@@ -46,6 +48,12 @@ class Update:
                 raise ValueError(f"{type(target).__name__} 没有 prop '{key}',无法 Update")
             if any(isinstance(m, EventSpec) for m in fields[key].metadata):
                 raise ValueError(f"事件字段 '{key}' 不能通过 Update 修改")
+            if isinstance(getattr(target, key), Expr):
+                # 所有权公理(design.md §3.4):Expr 绑定的 prop 归客户端所有,服务端 patch 是编程错误
+                raise ValueError(
+                    f"{self.target}.{key} 已绑定客户端表达式(所有权在客户端),不能通过 Update 修改;"
+                    "需要服务端控制请改用普通值,或等 ServerState 字段绑定(M1 Phase 3)"
+                )
             validator.validate_assignment(probe, key, value)  # 类型不符抛 ValidationError
         self.props = props
 
