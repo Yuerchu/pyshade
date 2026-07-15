@@ -18,9 +18,13 @@ from pyshade.components.enums import (
     TooltipSide,
 )
 from pyshade.components.input import Input, PasswordInput
+from pyshade.components.options import Option
 from pyshade.components.progress import Progress
+from pyshade.components.radio_group import RadioGroup
+from pyshade.components.select import Select
 from pyshade.components.separator import Separator
 from pyshade.components.skeleton import Skeleton
+from pyshade.components.slider import Slider
 from pyshade.components.switch import Switch
 from pyshade.components.text import Text
 from pyshade.components.textarea import Textarea
@@ -39,11 +43,15 @@ __all__ = [
     'EventSpec',
     'Handler',
     'Input',
+    'Option',
     'Orientation',
     'PasswordInput',
     'Progress',
+    'RadioGroup',
+    'Select',
     'Separator',
     'Skeleton',
+    'Slider',
     'Switch',
     'Text',
     'Textarea',

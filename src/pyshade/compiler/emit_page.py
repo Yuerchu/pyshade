@@ -44,8 +44,16 @@ SHADCN_MODULES: dict[str, str] = {
     'Input': '"@/components/ui/input"',
     'Label': '"@/components/ui/label"',
     'Progress': '"@/components/ui/progress"',
+    'RadioGroup': '"@/components/ui/radio-group"',
+    'RadioGroupItem': '"@/components/ui/radio-group"',
+    'Select': '"@/components/ui/select"',
+    'SelectContent': '"@/components/ui/select"',
+    'SelectItem': '"@/components/ui/select"',
+    'SelectTrigger': '"@/components/ui/select"',
+    'SelectValue': '"@/components/ui/select"',
     'Separator': '"@/components/ui/separator"',
     'Skeleton': '"@/components/ui/skeleton"',
+    'Slider': '"@/components/ui/slider"',
     'Switch': '"@/components/ui/switch"',
     'Textarea': '"@/components/ui/textarea"',
 }
@@ -520,6 +528,140 @@ def emit_checkbox(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     w.line(f'<Checkbox {" ".join(attrs)} />')
     if label:
         w.line(f'<Label htmlFor={js_string(node.anchor)}>{{{ctx.prop_js(node, label)}}}</Label>')
+    w.dedent()
+    w.line('</div>')
+    _close_visible_guard(guarded, w)
+
+
+_OPTION_TS_TYPE = '{ value: string; label: string }[]'
+
+
+@register('Select')
+def emit_select(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    for name in ('Select', 'SelectContent', 'SelectItem', 'SelectTrigger', 'SelectValue', 'Label'):
+        ctx.imports.add(name)
+    ctx.add_controlled(node)
+    var = ctx.value_var(node)
+    setter = ctx.setter(node)
+    guarded = _emit_visible_guard(node, w, ctx)
+
+    label = _opt_prop(node, 'label')
+    placeholder = _opt_prop(node, 'placeholder')
+    options = next(p for p in node.props if p.name == 'options')
+    disabled = next((p for p in node.props if p.name == 'disabled'), None)
+    change_event = next((e for e in node.events if e.kind == 'change'), None)
+
+    change_parts = [f'{setter}(v)']
+    if change_event:
+        change_parts.append(f'rt.fire({js_string(change_event.handler_id)}, {{ value: v }})')
+
+    w.line('<div className="grid gap-2">')
+    w.indent()
+    if label:
+        w.line(f'<Label htmlFor={js_string(node.anchor)}>{{{ctx.prop_js(node, label)}}}</Label>')
+    root_attrs = [f'value={{{var}}}', f'onValueChange={{(v) => {{ {"; ".join(change_parts)} }}}}']
+    if disabled:
+        root_attrs.append(f'disabled={{{ctx.prop_js(node, disabled)}}}')
+    w.line(f'<Select {" ".join(root_attrs)}>')
+    w.indent()
+    w.line(f'<SelectTrigger id={js_string(node.anchor)}>')
+    w.indent()
+    placeholder_attr = f' placeholder={{{ctx.prop_js(node, placeholder)}}}' if placeholder else ''
+    w.line(f'<SelectValue{placeholder_attr} />')
+    w.dedent()
+    w.line('</SelectTrigger>')
+    w.line('<SelectContent>')
+    w.indent()
+    options_js = f'rt.ov<{_OPTION_TS_TYPE}>({js_string(node.anchor)}, "options", {js_value(options.default_value)})'
+    w.line(f'{{{options_js}.map((o) => (')
+    w.indent()
+    w.line('<SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>')
+    w.dedent()
+    w.line('))}')
+    w.dedent()
+    w.line('</SelectContent>')
+    w.dedent()
+    w.line('</Select>')
+    w.dedent()
+    w.line('</div>')
+    _close_visible_guard(guarded, w)
+
+
+@register('RadioGroup')
+def emit_radio_group(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    for name in ('RadioGroup', 'RadioGroupItem', 'Label'):
+        ctx.imports.add(name)
+    ctx.add_controlled(node)
+    var = ctx.value_var(node)
+    setter = ctx.setter(node)
+    guarded = _emit_visible_guard(node, w, ctx)
+
+    label = _opt_prop(node, 'label')
+    options = next(p for p in node.props if p.name == 'options')
+    disabled = next((p for p in node.props if p.name == 'disabled'), None)
+    change_event = next((e for e in node.events if e.kind == 'change'), None)
+
+    change_parts = [f'{setter}(v)']
+    if change_event:
+        change_parts.append(f'rt.fire({js_string(change_event.handler_id)}, {{ value: v }})')
+
+    w.line('<div className="grid gap-2">')
+    w.indent()
+    if label:
+        w.line(f'<Label>{{{ctx.prop_js(node, label)}}}</Label>')
+    root_attrs = [f'value={{{var}}}', f'onValueChange={{(v) => {{ {"; ".join(change_parts)} }}}}']
+    if disabled:
+        root_attrs.append(f'disabled={{{ctx.prop_js(node, disabled)}}}')
+    w.line(f'<RadioGroup {" ".join(root_attrs)}>')
+    w.indent()
+    options_js = f'rt.ov<{_OPTION_TS_TYPE}>({js_string(node.anchor)}, "options", {js_value(options.default_value)})'
+    w.line(f'{{{options_js}.map((o) => (')
+    w.indent()
+    w.line('<div key={o.value} className="flex items-center gap-2">')
+    w.indent()
+    w.line(f'<RadioGroupItem id={{{js_string(node.anchor)} + "-" + o.value}} value={{o.value}} />')
+    w.line(f'<Label htmlFor={{{js_string(node.anchor)} + "-" + o.value}}>{{o.label}}</Label>')
+    w.dedent()
+    w.line('</div>')
+    w.dedent()
+    w.line('))}')
+    w.dedent()
+    w.line('</RadioGroup>')
+    w.dedent()
+    w.line('</div>')
+    _close_visible_guard(guarded, w)
+
+
+@register('Slider')
+def emit_slider(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    ctx.imports.add('Slider')
+    ctx.imports.add('Label')
+    ctx.add_controlled(node)
+    var = ctx.value_var(node)
+    setter = ctx.setter(node)
+    guarded = _emit_visible_guard(node, w, ctx)
+
+    label = _opt_prop(node, 'label')
+    disabled = next((p for p in node.props if p.name == 'disabled'), None)
+    change_event = next((e for e in node.events if e.kind == 'change'), None)
+
+    w.line('<div className="grid gap-2">')
+    w.indent()
+    if label:
+        w.line(f'<Label htmlFor={js_string(node.anchor)}>{{{ctx.prop_js(node, label)}}}</Label>')
+    attrs: list[str] = [f'id={js_string(node.anchor)}']
+    for bound in ('min', 'max', 'step'):
+        prop = next((p for p in node.props if p.name == bound), None)
+        if prop:
+            attrs.append(f'{bound}={{{ctx.prop_js(node, prop)}}}')
+    if disabled:
+        attrs.append(f'disabled={{{ctx.prop_js(node, disabled)}}}')
+    # 拖动仅本地 state,松手才跨界(0-keystroke-IPC)
+    attrs.append(f'value={{[{var}]}}')
+    attrs.append(f'onValueChange={{([v]) => {setter}(v)}}')
+    if change_event:
+        attrs.append(f'onValueCommit={{([v]) => rt.fire({js_string(change_event.handler_id)}, {{ value: v }})}}')
+    w.line(f'<Slider {" ".join(attrs)} />')
     w.dedent()
     w.line('</div>')
     _close_visible_guard(guarded, w)

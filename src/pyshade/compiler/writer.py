@@ -55,12 +55,19 @@ def js_bool(value: bool) -> str:
 def js_value(value: object) -> str:
     from enum import Enum
 
+    from pydantic import BaseModel
+
     if isinstance(value, bool):
         return js_bool(value)
     if isinstance(value, str):
         return js_string(value)
     if isinstance(value, Enum):
         return js_string(value.value)
+    if isinstance(value, BaseModel):
+        return json.dumps(value.model_dump(mode='json'), ensure_ascii=False)
+    if isinstance(value, (list, tuple)):
+        items = ', '.join(js_value(item) for item in value)  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+        return f'[{items}]'
     if value is None:
         return 'null'
     return str(value)

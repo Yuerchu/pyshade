@@ -147,6 +147,62 @@ def _check_component_rules(node: NodeIR) -> None:
             v = value.default_value
             if isinstance(v, (int, float)) and not 0 <= v <= 100:
                 raise CompileError(f"{_site(node, value)}: Progress 取值 {v} 越界 → 取值范围 0-100")
+    elif node.tag in ('Select', 'RadioGroup'):
+        _check_options(node)
+    elif node.tag == 'Slider':
+        _check_slider(node)
+
+
+def _check_options(node: NodeIR) -> None:
+    from pyshade.components.options import Option
+
+    options_prop = next(p for p in node.props if p.name == 'options')
+    options = cast('list[Option]', options_prop.default_value)
+    if not options:
+        raise CompileError(f"{_site(node, options_prop)}: 选项列表为空 → 请至少提供一个选项")
+    seen: set[str] = set()
+    for option in options:
+        if not option.value:
+            raise CompileError(f"{_site(node, options_prop)}: 选项 value 不能为空串(radix Item 限制)→ 请提供非空 value")
+        if option.value in seen:
+            raise CompileError(f"{_site(node, options_prop)}: 选项 value '{option.value}' 重复 → value 必须唯一")
+        seen.add(option.value)
+
+    value_prop = next(p for p in node.props if p.name == 'value')
+    default: object = value_prop.default_value
+    if isinstance(default, ClientVal):
+        default = cast('ClientVal[Any]', default).default
+    if isinstance(default, str) and default and default not in seen:
+        raise CompileError(f"{_site(node, value_prop)}: 默认值 '{default}' 不在选项中 → 请使用某个选项的 value 或留空")
+
+
+def _check_slider(node: NodeIR) -> None:
+    def plain_number(name: str) -> float | None:
+        prop = next((p for p in node.props if p.name == name), None)
+        if prop is None or prop.binding != 'plain':
+            return None
+        value = prop.default_value
+        return float(value) if isinstance(value, (int, float)) else None
+
+    minimum, maximum, step = plain_number('min'), plain_number('max'), plain_number('step')
+    if minimum is not None and maximum is not None and minimum >= maximum:
+        raise CompileError(f"{node.anchor}.min: Slider 区间非法(min={minimum} >= max={maximum})→ 请保证 min < max")
+    if step is not None and step <= 0:
+        raise CompileError(f"{node.anchor}.step: Slider step 必须为正数(收到 {step})")
+
+    value_prop = next(p for p in node.props if p.name == 'value')
+    default: object = value_prop.default_value
+    if isinstance(default, ClientVal):
+        default = cast('ClientVal[Any]', default).default
+    if (
+        isinstance(default, (int, float))
+        and minimum is not None
+        and maximum is not None
+        and not minimum <= float(default) <= maximum
+    ):
+        raise CompileError(
+            f"{_site(node, value_prop)}: 默认值 {default} 不在区间 [{minimum}, {maximum}] 内 → 请调整默认值或区间"
+        )
 
 
 def _expected_expr_types(component: Component, prop: str) -> set[ExprType]:

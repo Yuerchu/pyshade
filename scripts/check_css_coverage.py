@@ -30,20 +30,28 @@ def classes_from(path: Path, *, attr_only: bool) -> set[str]:
     return out
 
 
-def css_has(css: str, cls: str) -> bool:
-    escaped = re.escape(cls).replace(r'\:', r'\\?:')
-    # Tailwind 对 [ ] / : . % 等做转义;宽松匹配:类名主体出现在选择器位置即可
-    body = re.escape(cls)
-    for ch, esc in (('[', r'\\\['), (']', r'\\\]'), (':', r'(\\)?:'), ('.', r'\\?\.'), ('/', r'\\?/'), ('%', r'\\?%')):
-        body = body.replace(re.escape(ch), esc)
-    return re.search(rf'\.{body}[,{{\\:）)]?', css) is not None or re.search(rf'\.{escaped}', css) is not None
+_SELECTOR_DELIMITERS = frozenset(',{:>. )[')
+
+
+def css_has(css_unescaped: str, cls: str) -> bool:
+    """在去掉 CSS 选择器转义(反斜杠)的文本里找 `.类名`,后随选择器分隔符。"""
+    needle = '.' + cls
+    start = 0
+    while True:
+        index = css_unescaped.find(needle, start)
+        if index == -1:
+            return False
+        end = index + len(needle)
+        if end >= len(css_unescaped) or css_unescaped[end] in _SELECTOR_DELIMITERS:
+            return True
+        start = index + 1
 
 
 def main() -> int:
     if not STYLE.exists():
         print("缺 dist-style/style.css:先 pnpm -C frontend build:css", file=sys.stderr)
         return 1
-    css = STYLE.read_text(encoding='utf-8')
+    css = STYLE.read_text(encoding='utf-8').replace('\\', '')
 
     wanted: set[str] = set()
     for golden in (REPO / 'tests' / 'compiler' / 'golden').glob('*.gen.tsx'):

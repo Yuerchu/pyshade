@@ -9,7 +9,7 @@ import inspect
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 
@@ -33,7 +33,7 @@ class EventContext(BaseModel):
     """
 
     values: dict[str, str | bool | int | float] = {}
-    value: str | bool | None = None
+    value: str | bool | int | float | None = None
 
 
 class Update:
@@ -65,7 +65,16 @@ class Update:
         self.props = props
 
     def to_payload(self) -> dict[str, Any]:
-        props = {key: (value.value if isinstance(value, Enum) else value) for key, value in self.props.items()}
+        def jsonify(value: Any) -> Any:
+            if isinstance(value, Enum):
+                return value.value
+            if isinstance(value, BaseModel):
+                return value.model_dump(mode='json')
+            if isinstance(value, (list, tuple)):
+                return [jsonify(item) for item in cast('list[object]', value)]
+            return value
+
+        props = {key: jsonify(value) for key, value in self.props.items()}
         return {'target': self.target, 'props': props}
 
 
