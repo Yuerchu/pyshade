@@ -49,7 +49,7 @@ class TestEsbuildArgs:
     def test_production_args(self) -> None:
         from pathlib import Path
 
-        args = esbuild_args(entry='src/entry.tsx', outfile=Path('out/app.js'), dev=False, watch=False)
+        args = esbuild_args(entry='src/entry.tsx', outfile=Path('out/app.js'), dev=False)
         assert '--bundle' in args
         assert '--format=esm' in args
         assert '--jsx=automatic' in args
@@ -61,11 +61,10 @@ class TestEsbuildArgs:
     def test_dev_args(self) -> None:
         from pathlib import Path
 
-        args = esbuild_args(entry='src/entry.tsx', outfile=Path('out/app.js'), dev=True, watch=True)
+        args = esbuild_args(entry='src/entry.tsx', outfile=Path('out/app.js'), dev=True)
         assert '--define:process.env.NODE_ENV="development"' in args
         assert '--sourcemap' in args
         assert '--minify' not in args
-        assert '--watch=forever' in args
 
 
 class TestAssets:

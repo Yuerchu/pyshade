@@ -29,7 +29,7 @@ class BundleResult:
     duration_ms: float
 
 
-def esbuild_args(*, entry: str, outfile: Path, dev: bool, watch: bool) -> list[str]:
+def esbuild_args(*, entry: str, outfile: Path, dev: bool) -> list[str]:
     """组装 esbuild CLI 参数(独立函数便于单测断言,不联网不起进程)。"""
     node_env = 'development' if dev else 'production'
     args = [
@@ -46,8 +46,6 @@ def esbuild_args(*, entry: str, outfile: Path, dev: bool, watch: bool) -> list[s
         args.append('--sourcemap')
     else:
         args.append('--minify')
-    if watch:
-        args.append('--watch=forever')
     return args
 
 
@@ -56,7 +54,6 @@ def bundle_app(
     out_dir: str | Path,
     *,
     dev: bool = False,
-    watch: bool = False,
     workdir: str | Path = '.pyshade/build',
 ) -> BundleResult:
     """编译 + staging + esbuild,产出 index.html / app.js / style.css 三件套。"""
@@ -72,7 +69,7 @@ def bundle_app(
 
     esbuild = ensure_esbuild()
     out.mkdir(parents=True, exist_ok=True)
-    args = esbuild_args(entry='src/entry.tsx', outfile=out / 'app.js', dev=dev, watch=watch)
+    args = esbuild_args(entry='src/entry.tsx', outfile=out / 'app.js', dev=dev)
     env = {**os.environ, 'NODE_PATH': str(assets.node_modules)}
     run_esbuild(esbuild, args, cwd=work, env=env)
 

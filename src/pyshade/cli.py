@@ -41,7 +41,6 @@ def _bundle(args: argparse.Namespace) -> None:
         app_obj,
         args.out,
         dev=args.dev,
-        watch=args.watch,
         workdir=args.workdir,
     )
     print(f"打包完成 → {result.out_dir}(app.js {result.app_js_bytes / 1024:.0f} KB)")
@@ -101,7 +100,6 @@ def main() -> None:
     bundle_parser.add_argument('app', help='模块路径:属性名(如 myapp.app:app)')
     bundle_parser.add_argument('--out', default='dist', help='输出目录(index.html + app.js + style.css)')
     bundle_parser.add_argument('--dev', action='store_true', help='开发构建:sourcemap + React 开发警告,不 minify')
-    bundle_parser.add_argument('--watch', action='store_true', help='esbuild watch 模式(TS 变更即重打)')
     bundle_parser.add_argument('--workdir', default='.pyshade/build', help='staging 工作目录')
 
     testkit_parser = sub.add_parser('bundle-testkit', help='内部:testkit 的 esbuild 构建(CI 对照实验)')
