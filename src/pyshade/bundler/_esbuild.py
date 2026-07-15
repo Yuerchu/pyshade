@@ -17,6 +17,10 @@ from pathlib import Path
 
 from loguru import logger as l
 
+from pyshade._cache import cache_root
+
+__all__ = ['ESBUILD_VERSION', 'EsbuildAcquireError', 'cache_root', 'ensure_esbuild', 'esbuild_platform', 'run_esbuild']
+
 ESBUILD_VERSION = '0.28.1'
 
 # scripts/pin_esbuild.py 生成;升级 esbuild 版本时整表更新
@@ -51,20 +55,6 @@ def esbuild_platform() -> str:
     if plat is None:
         raise EsbuildAcquireError(f"不支持的平台 {key};请手动下载 esbuild 并设置 PYSHADE_ESBUILD_PATH 指向该二进制")
     return plat
-
-
-def cache_root() -> Path:
-    override = os.environ.get('PYSHADE_CACHE_DIR')
-    if override:
-        return Path(override)
-    system = platform.system().lower()
-    if system == 'windows':
-        base = os.environ.get('LOCALAPPDATA', str(Path.home() / 'AppData' / 'Local'))
-        return Path(base) / 'pyshade'
-    if system == 'darwin':
-        return Path.home() / 'Library' / 'Caches' / 'pyshade'
-    xdg = os.environ.get('XDG_CACHE_HOME')
-    return (Path(xdg) if xdg else Path.home() / '.cache') / 'pyshade'
 
 
 def _binary_member(plat: str) -> str:
