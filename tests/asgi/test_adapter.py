@@ -1,12 +1,15 @@
 import json
+import threading
 import time
 from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
+import anyio
 import pytest
 from anyio.from_thread import start_blocking_portal
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 
 from pyshade.asgi._adapter import AsgiIpcAdapter
 from pyshade.asgi._lifespan import LifespanError
@@ -95,6 +98,35 @@ def test_unknown_command_without_fallback_rejected() -> None:
         other = FakeInvoke('some_pytauri_command', FakeResolver({'body': b'', 'headers': []}))
         handler(other)
         assert json.loads(other.rejected[0])['code'] == 'unknown_command'
+
+
+def test_lifespan_exit_cancels_open_ended_stream() -> None:
+    """开放式流(SSE 推送)的 bridge task 永不自行结束;shutdown 必须取消 in-flight 请求,
+    否则 `start_blocking_portal` 正常退出会永远等待该 task(真机上表现为关窗后进程挂死)。"""
+    generator_cancelled = threading.Event()
+    app = FastAPI()
+
+    @app.get('/endless')
+    async def endless() -> StreamingResponse:
+        async def gen() -> AsyncGenerator[bytes, None]:
+            try:
+                while True:
+                    yield b'data: ping\n\n'
+                    await anyio.sleep(3600)
+            finally:
+                generator_cancelled.set()
+
+        return StreamingResponse(gen(), media_type='text/event-stream')
+
+    with start_blocking_portal('asyncio') as portal:
+        adapter = AsgiIpcAdapter(app, portal, channel_factory=_fake_channel_factory)
+        handler = adapter.invoke_handler()
+        with adapter.lifespan():
+            invoke = make_invoke('GET', '/endless')
+            handler(invoke)
+            _wait_for(lambda: invoke.resolver.resolved)  # 流式头已 resolve,流保持打开
+        # lifespan 退出即取消;portal 正常退出不再挂死(本测试能跑完即是断言)
+    assert generator_cancelled.is_set()
 
 
 def test_startup_failure_propagates_and_cleans_up() -> None:

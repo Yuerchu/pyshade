@@ -8,6 +8,7 @@ import { shadeFetch } from "@/ipc/shadeFetch";
 import { suiteEmptyBody } from "./suites/emptyBody";
 import { suiteHeaders } from "./suites/headers";
 import { suitePayload } from "./suites/payload";
+import { suiteRouting } from "./suites/routing";
 import { suiteRtt } from "./suites/rtt";
 import { suiteStreaming } from "./suites/streaming";
 import { runCloseWindowScenario } from "./suites/closeWindow";
@@ -21,6 +22,7 @@ const BUILTIN_SUITES: [string, SuiteFn][] = [
   ["body.empty_raw", suiteEmptyBody],
   ["typing.latency", suiteTyping],
   ["rtt.bench_echo", suiteRtt],
+  ["routing.state", suiteRouting],
 ];
 
 const extraSuites: [string, SuiteFn][] = [];

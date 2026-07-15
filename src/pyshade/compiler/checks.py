@@ -82,6 +82,23 @@ def check_page_ir(page_ir: PageIR) -> None:
     _check_var_collisions(page_ir)
 
 
+def check_app(page_irs: list[PageIR]) -> None:
+    """App 级校验(M2 Phase 5):页面类名唯一(anchor/handlerId/路由的命名空间)、navigate 目标存在。"""
+    names: set[str] = set()
+    for page_ir in page_irs:
+        if page_ir.name in names:
+            raise CompileError(f"页面类名 '{page_ir.name}' 重复:anchor/handlerId/路由均以类名为命名空间 → 请重命名")
+        names.add(page_ir.name)
+    for page_ir in page_irs:
+        for node in iter_node_irs(page_ir):
+            for nav in node.navigations:
+                if nav.target_page not in names:
+                    raise CompileError(
+                        f"{node.anchor}.{nav.field_name}: navigate 目标 '{nav.target_page}' "
+                        "不在 ShadeApp.pages 中 → 请将该页面加入 pages 列表或修正页面名"
+                    )
+
+
 def _check_node(node: NodeIR, page_name: str, seen: set[str], state: _ExprState, *, parent_tag: str | None) -> None:
     if node.anchor in seen:
         raise CompileError(f"{node.anchor}: anchor 重复(内部错误)")
@@ -167,6 +184,8 @@ def _check_slot_nesting(node: NodeIR, parent_tag: str | None) -> None:
 
 def _check_component_rules(node: NodeIR) -> None:
     """组件特有规则(按 tag 分发)。"""
+    if node.navigations:
+        _check_navigation(node)
     if node.tag == 'Progress':
         value = next((p for p in node.props if p.name == 'value'), None)
         if value is not None and value.binding == 'plain':
@@ -181,6 +200,17 @@ def _check_component_rules(node: NodeIR) -> None:
         _check_tooltip(node)
     elif node.tag in ('Dialog', 'AlertDialog'):
         _check_dialog(node)
+
+
+def _check_navigation(node: NodeIR) -> None:
+    """navigate 是纯客户端跳转,不产生 IPC:submit=True(需要 handler 收 values)与之互斥。"""
+    submit = next((p for p in node.props if p.name == 'submit'), None)
+    if submit is not None and submit.default_value is True:
+        nav = node.navigations[0]
+        raise CompileError(
+            f"{node.anchor}.{nav.field_name}: submit=True 的按钮需要 handler 接收 values,"
+            "navigate 不携带数据 → 请改用模块级 handler 并在服务端返回 Navigate(Page)"
+        )
 
 
 def _check_tooltip(node: NodeIR) -> None:

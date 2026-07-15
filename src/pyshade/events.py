@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from pyshade.app import ShadeApp
 from pyshade.components.base import Component, EventSpec, Handler
 from pyshade.expr import Expr
+from pyshade.nav import NavigateAction
 from pyshade.page import Page, anchor_of, iter_nodes
 from pyshade.state import ServerRef
 
@@ -124,8 +125,10 @@ class EventEntry:
 class EventRegistry(Mapping[str, EventEntry]):
     """handlerId → EventEntry;asgi 层据此挂载 /_shade/event/{handler_id} 路由。"""
 
-    def __init__(self, entries: dict[str, EventEntry]) -> None:
+    def __init__(self, entries: dict[str, EventEntry], *, page_names: frozenset[str] = frozenset()) -> None:
         self._entries = entries
+        self.page_names = page_names
+        """app 的页面类名集合;dispatch 校验服务端 Navigate 目标(空集 = 不校验,手工构造场景)。"""
 
     def __getitem__(self, key: str) -> EventEntry:
         return self._entries[key]
@@ -150,8 +153,8 @@ class EventRegistry(Mapping[str, EventEntry]):
                     if not specs:
                         continue
                     handler: Handler | None = getattr(component, field_name)
-                    if handler is None:
-                        continue
+                    if handler is None or isinstance(handler, NavigateAction):
+                        continue  # navigate 编译为 rt.navigate,零 IPC,不进注册表
                     handler_id = f'{anchor_of(component)}.{field_name}'
                     validate_handler(handler, owner=handler_id)
                     submit = bool(getattr(component, 'submit', False))
@@ -168,4 +171,4 @@ class EventRegistry(Mapping[str, EventEntry]):
             entries[handler_id] = EventEntry(
                 handler_id=handler_id, handler=handler, kind='extra', component=None, submit=False, page=None
             )
-        return cls(entries)
+        return cls(entries, page_names=frozenset(page.__name__ for page in app.pages))

@@ -3,6 +3,7 @@ from typing import Annotated, Any
 from pyshade.components.base import Component, EventSpec, Handler
 from pyshade.components.enums import ButtonSize, ButtonVariant
 from pyshade.expr import Expr
+from pyshade.nav import NavigateAction
 from pyshade.state import ServerRef
 
 
@@ -16,7 +17,7 @@ class Button(Component):
     size: ButtonSize = ButtonSize.DEFAULT
     disabled: bool | Expr[bool] | ServerRef[bool] = False
     submit: bool = False
-    on_click: Annotated[Handler | None, EventSpec('click')] = None
+    on_click: Annotated[Handler | NavigateAction | None, EventSpec('click')] = None
 
     def __init__(
         self,
@@ -26,7 +27,7 @@ class Button(Component):
         size: ButtonSize = ButtonSize.DEFAULT,
         disabled: bool | Expr[bool] | ServerRef[bool] = False,
         submit: bool = False,
-        on_click: Handler | None = None,
+        on_click: Handler | NavigateAction | None = None,
         visible: bool | Expr[bool] | ServerRef[bool] = True,
     ) -> None:
         data: dict[str, Any] = {

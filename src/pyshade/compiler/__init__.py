@@ -7,7 +7,7 @@ Python DTO → React 代码生成;静态收集组件 import 生成 entry.tsx,交
 from pathlib import Path
 
 from pyshade.app import ShadeApp
-from pyshade.compiler.checks import check_page_ir
+from pyshade.compiler.checks import check_app, check_page_ir
 from pyshade.compiler.emit_app import emit_app, emit_manifest
 from pyshade.compiler.emit_page import emit_page
 from pyshade.compiler.emit_types import collect_enums, emit_types
@@ -25,6 +25,7 @@ def compile_app(app: ShadeApp, out_dir: str | Path) -> None:
         page_ir = build_page_ir(page)
         check_page_ir(page_ir)
         page_irs.append(page_ir)
+    check_app(page_irs)
 
     for page_ir in page_irs:
         tsx = emit_page(page_ir)

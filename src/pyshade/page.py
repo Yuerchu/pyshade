@@ -14,6 +14,7 @@ from typing import Any, ClassVar, cast
 
 from pyshade.components.base import Component, EventSpec, read_anchor, write_anchor
 from pyshade.expr import ClientVal, read_owner, write_owner
+from pyshade.nav import NavigateAction
 
 
 class LayoutError(Exception):
@@ -45,9 +46,12 @@ def anchor_of(component: Component) -> str:
 
 
 def has_bound_events(component: Component) -> bool:
-    """组件是否绑定了至少一个事件 handler。"""
+    """组件是否绑定了至少一个事件 handler(NavigateAction 无 handlerId,不算)。"""
     for name, field in type(component).model_fields.items():
-        if any(isinstance(m, EventSpec) for m in field.metadata) and getattr(component, name) is not None:
+        if not any(isinstance(m, EventSpec) for m in field.metadata):
+            continue
+        value: object = getattr(component, name)
+        if value is not None and not isinstance(value, NavigateAction):
             return True
     return False
 

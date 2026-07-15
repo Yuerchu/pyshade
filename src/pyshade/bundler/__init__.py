@@ -106,6 +106,8 @@ def bundle_testkit(out_file: str | Path, *, workdir: str | Path = '.pyshade/test
         '--format=iife',
         f'--outfile={out}',
         '--tsconfig=tsconfig.json',
+        '--jsx=automatic',
+        '--define:process.env.NODE_ENV="production"',
         '--target=es2020',
     ]
     env = {**os.environ, 'NODE_PATH': str(assets.node_modules)}

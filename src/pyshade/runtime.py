@@ -11,6 +11,7 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import ValidationError
 
 from pyshade.events import EventContext, EventRegistry, Update
+from pyshade.nav import Navigate
 from pyshade.state import patch_sink
 
 
@@ -41,14 +42,24 @@ def mount_event_routes(app: FastAPI, registry: EventRegistry) -> None:
             result = entry.handler(payload)
             if inspect.isawaitable(result):
                 result = await result
-        updates: list[Update] = []
+        explicit: list[dict[str, Any]] = []
         if result is not None:
             items: list[object] = list(result)
-            if not all(isinstance(u, Update) for u in items):
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"handler {handler_id} 必须返回 list[Update] 或 None",
-                )
-            updates = [u for u in items if isinstance(u, Update)]
+            for item in items:
+                if isinstance(item, Update):
+                    explicit.append(item.to_payload())
+                elif isinstance(item, Navigate):
+                    # $nav 是 patch 的保留地址(M2 Phase 5):前端 App 级 store 消费后切页
+                    if registry.page_names and item.page_name not in registry.page_names:
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"handler {handler_id} 的 Navigate 目标 '{item.page_name}' 不在 ShadeApp.pages 中",
+                        )
+                    explicit.append(item.to_payload())
+                else:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"handler {handler_id} 必须返回 list[Update | Navigate] 或 None",
+                    )
         # auto-diff 在前、显式 Update 在后:前端顺序 merge,显式 Update 覆盖(M0 兼容)
-        return {'patches': sink.to_patches() + [update.to_payload() for update in updates]}
+        return {'patches': sink.to_patches() + explicit}

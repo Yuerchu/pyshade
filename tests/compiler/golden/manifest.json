@@ -15,5 +15,11 @@
       "Switch",
       "Text"
     ]
+  },
+  "routes": {
+    "initial": "LoginPage",
+    "pages": [
+      "LoginPage"
+    ]
   }
 }

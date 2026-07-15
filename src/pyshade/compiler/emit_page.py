@@ -263,6 +263,7 @@ def emit_button(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     text = next((p for p in node.props if p.name == 'text'), None)
     submit = next((p for p in node.props if p.name == 'submit'), None)
     click_event = next((e for e in node.events if e.kind == 'click'), None)
+    click_nav = next((n for n in node.navigations if n.kind == 'click'), None)
 
     is_submit = submit is not None and submit.default_value is True
     attrs: list[str] = []
@@ -278,6 +279,8 @@ def emit_button(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
             attrs.append(f'onClick={{() => rt.fire({hid}, {{ values: collectValues(true) }})}}')
         else:
             attrs.append(f'onClick={{() => rt.fire({hid}, {{}})}}')
+    elif click_nav:
+        attrs.append(f'onClick={{() => rt.navigate({js_string(click_nav.target_page)})}}')
 
     text_val = ctx.prop_js(node, text) if text else js_string('')
     w.line(f'<Button {" ".join(attrs)}>')
@@ -992,6 +995,13 @@ def emit_node(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
         w.line(f'{{/* unknown component: {node.tag} ({node.anchor}) */}}')
         return
     emitter(node, w, ctx)
+
+
+def page_binding_summary(page_ir: PageIR) -> tuple[list[str], bool]:
+    """页面的 (boundProps, 是否需要 push):emit_app 聚合到 App 级 Provider 用。"""
+    ctx = _PageEmitContext()
+    _prepare_bindings(page_ir, ctx)
+    return ctx.bound_props, ctx.uses_push
 
 
 def emit_page(page_ir: PageIR) -> str:

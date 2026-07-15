@@ -5,6 +5,7 @@ channel_factory 可注入,测试路径完全不需要 pytauri。
 """
 
 from collections.abc import Generator
+from concurrent.futures import Future
 from contextlib import contextmanager
 from typing import Any
 
@@ -41,6 +42,8 @@ class AsgiIpcAdapter:
         self._portal = portal
         self._manager = LifespanManager(app)
         self._ready = False
+        self._pending: set[Future[None]] = set()
+        """in-flight 请求的 portal future:shutdown 时统一取消(见 lifespan)。"""
         self._bridge = RequestBridge(
             app,
             channel_factory=channel_factory if channel_factory is not None else _pytauri_channel_factory,
@@ -61,7 +64,9 @@ class AsgiIpcAdapter:
                     if not self._ready:
                         invoke.reject(encode_reject('app_not_ready', "application startup has not completed"))
                         return
-                    self._portal.start_task_soon(self._bridge.handle_invoke, invoke)
+                    future = self._portal.start_task_soon(self._bridge.handle_invoke, invoke)
+                    self._pending.add(future)
+                    future.add_done_callback(self._pending.discard)
                 elif fallback is not None:
                     fallback(invoke)
                 else:
@@ -76,6 +81,8 @@ class AsgiIpcAdapter:
         """驱动 app lifespan:进入时 startup(失败抛出),退出时 shutdown。
 
         必须嵌在 portal 上下文内、包住 Tauri 的 `app.run_return()`。
+        退出时取消 in-flight 请求:开放式流(SSE 推送)的 bridge task 永不自行结束,
+        而 `start_blocking_portal` 正常退出会等所有 task 完成——不取消则进程挂死。
         """
         run_future = self._portal.start_task_soon(self._manager.run)
         try:
@@ -86,3 +93,6 @@ class AsgiIpcAdapter:
             self._ready = False
             self._portal.call(self._manager.request_shutdown)
             run_future.result()
+            aborted = [future for future in list(self._pending) if future.cancel()]
+            if aborted:
+                l.debug("pyshade.asgi: shutdown 取消了 {} 个 in-flight 请求(窗口已关,无人消费)", len(aborted))

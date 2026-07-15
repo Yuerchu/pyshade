@@ -11,6 +11,13 @@ import { isPatchesEnvelope, type Patch } from "./patches";
 const INITIAL_RETRY_MS = 500;
 const MAX_RETRY_MS = 10_000;
 
+declare global {
+  interface Window {
+    /** subscribePatches 调用计数(重连不计):testkit 断言切页不重订阅。 */
+    __PYSHADE_PUSH_SUBSCRIBE_COUNT__?: number;
+  }
+}
+
 function feedEvent(rawEvent: string, onPatches: (patches: Patch[]) => void): void {
   for (const line of rawEvent.split("\n")) {
     if (!line.startsWith("data: ")) {
@@ -31,6 +38,9 @@ function feedEvent(rawEvent: string, onPatches: (patches: Patch[]) => void): voi
 
 /** 订阅服务端 patch 推送;返回取消函数(React effect cleanup 直接可用)。 */
 export function subscribePatches(onPatches: (patches: Patch[]) => void): () => void {
+  if (typeof window !== "undefined") {
+    window.__PYSHADE_PUSH_SUBSCRIBE_COUNT__ = (window.__PYSHADE_PUSH_SUBSCRIBE_COUNT__ ?? 0) + 1;
+  }
   let cancelled = false;
   let retryMs = INITIAL_RETRY_MS;
 

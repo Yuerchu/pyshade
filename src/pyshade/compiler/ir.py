@@ -11,6 +11,7 @@ from typing import Any, Literal, cast
 
 from pyshade.components.base import Component, ControlledMixin, EventSpec, controlled_prop_of, is_sensitive
 from pyshade.expr import ClientVal, Expr
+from pyshade.nav import NavigateAction
 from pyshade.page import Page, anchor_of, iter_children
 from pyshade.state import ServerRef
 
@@ -32,6 +33,15 @@ class EventInfo:
     handler_id: str
 
 
+@dataclass(frozen=True, slots=True)
+class NavInfo:
+    """事件 prop 上的客户端导航(navigate(Page)):零 IPC,无 handlerId。"""
+
+    field_name: str
+    kind: str
+    target_page: str
+
+
 @dataclass(slots=True)
 class NodeIR:
     anchor: str
@@ -39,6 +49,7 @@ class NodeIR:
     tag: str
     props: list[PropInfo] = field(default_factory=list[PropInfo])
     events: list[EventInfo] = field(default_factory=list[EventInfo])
+    navigations: list[NavInfo] = field(default_factory=list[NavInfo])
     children: list['NodeIR'] = field(default_factory=list['NodeIR'])
     sensitive: bool = False
 
@@ -69,12 +80,15 @@ def build_node_ir(component: Component) -> NodeIR:
     tag = type(component)._shade_tag  # pyright: ignore[reportPrivateUsage]
     props: list[PropInfo] = []
     events: list[EventInfo] = []
+    navigations: list[NavInfo] = []
 
     for name, field_info in type(component).model_fields.items():
         specs = [m for m in field_info.metadata if isinstance(m, EventSpec)]
         if specs:
             handler = getattr(component, name)
-            if handler is not None:
+            if isinstance(handler, NavigateAction):
+                navigations.append(NavInfo(field_name=name, kind=specs[0].kind, target_page=handler.page_name))
+            elif handler is not None:
                 events.append(EventInfo(field_name=name, kind=specs[0].kind, handler_id=f'{anchor}.{name}'))
             continue
         value = getattr(component, name)
@@ -103,6 +117,7 @@ def build_node_ir(component: Component) -> NodeIR:
         tag=tag,
         props=props,
         events=events,
+        navigations=navigations,
         children=children_ir,
         sensitive=is_sensitive(component),
     )

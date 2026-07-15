@@ -1,4 +1,4 @@
-"""M0 七项真机验证:每项一个断言用例(共享一次 harness run 的报告)。"""
+"""真机验证:每项一个断言用例(共享一次 harness run 的报告)。M0 七项 + M2 路由语义。"""
 
 import pytest
 
@@ -46,6 +46,12 @@ def test_typing_latency(native_report: TestReport) -> None:
 
 def test_rtt_bench_echo(native_report: TestReport) -> None:
     case = _case(native_report, 'rtt.bench_echo')
+    assert case.status == 'pass', case.model_dump()
+
+
+def test_routing_state(native_report: TestReport) -> None:
+    """M2 Phase 5 切页语义:ClientVal 重置 / overrides 存活 / push 订阅不重连。"""
+    case = _case(native_report, 'routing.state')
     assert case.status == 'pass', case.model_dump()
 
 
