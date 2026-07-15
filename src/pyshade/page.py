@@ -21,11 +21,16 @@ class LayoutError(Exception):
 
 
 def iter_children(component: Component) -> list[Component]:
-    """收集组件的直接子组件(扫描值为 list[Component] 形态的字段)。"""
+    """收集组件的直接子组件:标量 Component 槽(如 Dialog.trigger)+ list[Component] 字段。
+
+    顺序 = model_fields 声明序;标量槽由此获得稳定的匿名路径 anchor。
+    """
     result: list[Component] = []
     for field_name in type(component).model_fields:
         value: object = getattr(component, field_name)
-        if isinstance(value, list):
+        if isinstance(value, Component):
+            result.append(value)
+        elif isinstance(value, list):
             items = cast('list[object]', value)
             result.extend(item for item in items if isinstance(item, Component))
     return result

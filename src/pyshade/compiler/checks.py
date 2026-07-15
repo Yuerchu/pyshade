@@ -77,12 +77,12 @@ def check_page_ir(page_ir: PageIR) -> None:
     seen_anchors: set[str] = set()
     state = _ExprState(vals_by_id={id(val): name for name, val in page_ir.client_vals.items()})
     for root in page_ir.roots:
-        _check_node(root, page_ir.name, seen_anchors, state)
+        _check_node(root, page_ir.name, seen_anchors, state, parent_tag=None)
     _check_client_val_writers(page_ir, state)
     _check_var_collisions(page_ir)
 
 
-def _check_node(node: NodeIR, page_name: str, seen: set[str], state: _ExprState) -> None:
+def _check_node(node: NodeIR, page_name: str, seen: set[str], state: _ExprState, *, parent_tag: str | None) -> None:
     if node.anchor in seen:
         raise CompileError(f"{node.anchor}: anchor 重复(内部错误)")
     seen.add(node.anchor)
@@ -90,6 +90,7 @@ def _check_node(node: NodeIR, page_name: str, seen: set[str], state: _ExprState)
     _check_naming(node, page_name)
     _check_sensitive(node)
     _check_event_handlers(node)
+    _check_slot_nesting(node, parent_tag)
     _check_component_rules(node)
     for prop in node.props:
         if prop.binding == 'client_bind':
@@ -100,7 +101,7 @@ def _check_node(node: NodeIR, page_name: str, seen: set[str], state: _ExprState)
             _check_server_ref(node, prop)
 
     for child in node.children:
-        _check_node(child, page_name, seen, state)
+        _check_node(child, page_name, seen, state, parent_tag=node.tag)
 
 
 def _check_naming(node: NodeIR, page_name: str) -> None:
@@ -139,6 +140,31 @@ _SCALAR_BY_PY_TYPE: dict[object, ExprType] = {
 }
 
 
+# 多槽容器的声明式嵌套表(§3.5 "SelectItem 只能在 Select 内"的校验能力落地)
+_SLOT_CHILD_OF: dict[str, str] = {'Tabs': 'TabItem', 'Accordion': 'AccordionItem'}
+_ITEM_PARENT_OF: dict[str, str] = {'TabItem': 'Tabs', 'AccordionItem': 'Accordion'}
+
+
+def _check_slot_nesting(node: NodeIR, parent_tag: str | None) -> None:
+    required_parent = _ITEM_PARENT_OF.get(node.tag)
+    if required_parent is not None and parent_tag != required_parent:
+        location = f'{parent_tag} 内' if parent_tag else '根级'
+        raise CompileError(f"{node.anchor}: {node.tag} 只能是 {required_parent} 的直接子组件(当前在 {location})")
+    required_child = _SLOT_CHILD_OF.get(node.tag)
+    if required_child is not None:
+        values: set[str] = set()
+        for child in node.children:
+            if child.tag != required_child:
+                raise CompileError(
+                    f"{node.anchor}: {node.tag} 的子组件必须全为 {required_child}(收到 {child.tag})→ "
+                    f"内容请放进 {required_child} 的 children"
+                )
+            item_value = str(getattr(child.component, 'value', ''))
+            if item_value in values:
+                raise CompileError(f"{child.anchor}: value '{item_value}' 重复 → 同一容器内 value 必须唯一")
+            values.add(item_value)
+
+
 def _check_component_rules(node: NodeIR) -> None:
     """组件特有规则(按 tag 分发)。"""
     if node.tag == 'Progress':
@@ -151,6 +177,39 @@ def _check_component_rules(node: NodeIR) -> None:
         _check_options(node)
     elif node.tag == 'Slider':
         _check_slider(node)
+    elif node.tag == 'Tooltip':
+        _check_tooltip(node)
+    elif node.tag in ('Dialog', 'AlertDialog'):
+        _check_dialog(node)
+
+
+def _check_tooltip(node: NodeIR) -> None:
+    if len(node.children) != 1:
+        raise CompileError(f"{node.anchor}: Tooltip 需要恰好一个宿主组件(收到 {len(node.children)} 个)")
+    child = node.children[0]
+    child_visible = next((p for p in child.props if p.name == 'visible'), None)
+    if child_visible is not None and (child_visible.binding != 'plain' or child_visible.default_value is not True):
+        raise CompileError(
+            f"{child.anchor}: Tooltip 宿主的 visible 必须保持默认 True(asChild 单元素约束)→ "
+            "显隐控制请放到 Tooltip 本身的 visible 上"
+        )
+
+
+def _check_dialog(node: NodeIR) -> None:
+    trigger: object = getattr(node.component, 'trigger', None)
+    if trigger is not None and getattr(trigger, 'on_click', None) is not None:
+        raise CompileError(
+            f"{node.anchor}.trigger: trigger 组件不得绑定 on_click(radix Trigger 接管点击,"
+            "asChild 合并会双触发)→ 打开弹窗无需 handler,业务点击请放弹窗内的按钮"
+        )
+    open_prop = next(p for p in node.props if p.name == 'open')
+    if trigger is None and open_prop.binding == 'plain' and open_prop.default_value is False:
+        warnings.warn(
+            f"{node.anchor}: 没有 trigger 且 open 恒为 False,弹窗永远无法打开;"
+            "请提供 trigger= 或绑定 ClientVal 控制 open",
+            UserWarning,
+            stacklevel=2,
+        )
 
 
 def _check_options(node: NodeIR) -> None:

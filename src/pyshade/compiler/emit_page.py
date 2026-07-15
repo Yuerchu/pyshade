@@ -14,6 +14,7 @@ from typing import Any, cast
 from pyshade.compiler.errors import CompileError
 from pyshade.compiler.ir import NodeIR, PageIR, PropInfo, iter_node_irs
 from pyshade.compiler.writer import TsxWriter, js_string, js_value
+from pyshade.components.base import Component
 from pyshade.expr import ClientVal, Expr, ExprType, PropRef
 from pyshade.page import anchor_of
 from pyshade.state import ServerRef
@@ -43,9 +44,29 @@ SHADCN_MODULES: dict[str, str] = {
     'Checkbox': '"@/components/ui/checkbox"',
     'Input': '"@/components/ui/input"',
     'Label': '"@/components/ui/label"',
+    'Accordion': '"@/components/ui/accordion"',
+    'AccordionContent': '"@/components/ui/accordion"',
+    'AccordionItem': '"@/components/ui/accordion"',
+    'AccordionTrigger': '"@/components/ui/accordion"',
+    'AlertDialog': '"@/components/ui/alert-dialog"',
+    'AlertDialogAction': '"@/components/ui/alert-dialog"',
+    'AlertDialogCancel': '"@/components/ui/alert-dialog"',
+    'AlertDialogContent': '"@/components/ui/alert-dialog"',
+    'AlertDialogDescription': '"@/components/ui/alert-dialog"',
+    'AlertDialogFooter': '"@/components/ui/alert-dialog"',
+    'AlertDialogHeader': '"@/components/ui/alert-dialog"',
+    'AlertDialogTitle': '"@/components/ui/alert-dialog"',
+    'AlertDialogTrigger': '"@/components/ui/alert-dialog"',
+    'Dialog': '"@/components/ui/dialog"',
+    'DialogContent': '"@/components/ui/dialog"',
+    'DialogDescription': '"@/components/ui/dialog"',
+    'DialogHeader': '"@/components/ui/dialog"',
+    'DialogTitle': '"@/components/ui/dialog"',
+    'DialogTrigger': '"@/components/ui/dialog"',
     'Progress': '"@/components/ui/progress"',
     'RadioGroup': '"@/components/ui/radio-group"',
     'RadioGroupItem': '"@/components/ui/radio-group"',
+    'ScrollArea': '"@/components/ui/scroll-area"',
     'Select': '"@/components/ui/select"',
     'SelectContent': '"@/components/ui/select"',
     'SelectItem': '"@/components/ui/select"',
@@ -55,7 +76,15 @@ SHADCN_MODULES: dict[str, str] = {
     'Skeleton': '"@/components/ui/skeleton"',
     'Slider': '"@/components/ui/slider"',
     'Switch': '"@/components/ui/switch"',
+    'Tabs': '"@/components/ui/tabs"',
+    'TabsContent': '"@/components/ui/tabs"',
+    'TabsList': '"@/components/ui/tabs"',
+    'TabsTrigger': '"@/components/ui/tabs"',
     'Textarea': '"@/components/ui/textarea"',
+    'Tooltip': '"@/components/ui/tooltip"',
+    'TooltipContent': '"@/components/ui/tooltip"',
+    'TooltipProvider': '"@/components/ui/tooltip"',
+    'TooltipTrigger': '"@/components/ui/tooltip"',
 }
 """shadcn 元件名 → import 模块;emit 与 bundler(extra_components 逃生舱)共用。"""
 
@@ -83,6 +112,8 @@ class _PageEmitContext:
         """客户端所有的 'anchor.prop'(expr/client_bind),文档序。"""
         self.uses_push: bool = False
         """页面含 ServerRef 绑定 → usePageRuntime({ push: true }) 订阅 /_shade/push。"""
+        self.no_guard_anchors: set[str] = set()
+        """asChild 槽(Dialog trigger / Tooltip 宿主)不发 visible guard(单元素约束)。"""
 
     def add_controlled(self, node: NodeIR) -> None:
         self.controlled_inputs.append(node)
@@ -188,6 +219,8 @@ def _prepare_bindings(page_ir: PageIR, ctx: _PageEmitContext) -> None:
 
 
 def _emit_visible_guard(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> bool:
+    if node.anchor in ctx.no_guard_anchors:
+        return False
     visible_prop = next((p for p in node.props if p.name == 'visible'), None)
     if visible_prop is None:
         return False
@@ -664,6 +697,292 @@ def emit_slider(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     w.line(f'<Slider {" ".join(attrs)} />')
     w.dedent()
     w.line('</div>')
+    _close_visible_guard(guarded, w)
+
+
+def _find_trigger_child(node: NodeIR) -> NodeIR | None:
+    """按实例同一性从 children 里切出 trigger 槽的 IR 节点。"""
+    trigger: object = getattr(node.component, 'trigger', None)
+    if not isinstance(trigger, Component):
+        return None
+    trigger_anchor = anchor_of(trigger)
+    return next((child for child in node.children if child.anchor == trigger_anchor), None)
+
+
+def _dialog_open_attrs(node: NodeIR, ctx: _PageEmitContext) -> list[str]:
+    """open 的两档形态:client_bind → 受控;plain → defaultOpen(仅初始值)。"""
+    open_prop = next(p for p in node.props if p.name == 'open')
+    if open_prop.binding == 'client_bind':
+        ctx.add_controlled(node)
+        var = ctx.value_var(node)
+        setter = ctx.setter(node)
+        return [f'open={{{var}}}', f'onOpenChange={{{setter}}}']
+    if open_prop.default_value is True:
+        return ['defaultOpen']
+    return []
+
+
+@register('Dialog')
+def emit_dialog(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    for name in ('Dialog', 'DialogContent'):
+        ctx.imports.add(name)
+    guarded = _emit_visible_guard(node, w, ctx)
+
+    title = _opt_prop(node, 'title')
+    description = _opt_prop(node, 'description')
+    trigger_node = _find_trigger_child(node)
+
+    attrs = _dialog_open_attrs(node, ctx)
+    w.line(f'<Dialog{" " + " ".join(attrs) if attrs else ""}>')
+    w.indent()
+    if trigger_node is not None:
+        ctx.imports.add('DialogTrigger')
+        ctx.no_guard_anchors.add(trigger_node.anchor)
+        w.line('<DialogTrigger asChild>')
+        w.indent()
+        emit_node(trigger_node, w, ctx)
+        w.dedent()
+        w.line('</DialogTrigger>')
+    w.line('<DialogContent>')
+    w.indent()
+    if title or description:
+        ctx.imports.add('DialogHeader')
+        w.line('<DialogHeader>')
+        w.indent()
+        if title:
+            ctx.imports.add('DialogTitle')
+            w.line(f'<DialogTitle>{{{ctx.prop_js(node, title)}}}</DialogTitle>')
+        if description:
+            ctx.imports.add('DialogDescription')
+            w.line(f'<DialogDescription>{{{ctx.prop_js(node, description)}}}</DialogDescription>')
+        w.dedent()
+        w.line('</DialogHeader>')
+    for child in node.children:
+        if trigger_node is not None and child.anchor == trigger_node.anchor:
+            continue
+        emit_node(child, w, ctx)
+    w.dedent()
+    w.line('</DialogContent>')
+    w.dedent()
+    w.line('</Dialog>')
+    _close_visible_guard(guarded, w)
+
+
+@register('AlertDialog')
+def emit_alert_dialog(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    for name in (
+        'AlertDialog',
+        'AlertDialogAction',
+        'AlertDialogCancel',
+        'AlertDialogContent',
+        'AlertDialogFooter',
+        'AlertDialogHeader',
+        'AlertDialogTitle',
+    ):
+        ctx.imports.add(name)
+    guarded = _emit_visible_guard(node, w, ctx)
+
+    title = next((p for p in node.props if p.name == 'title'), None)
+    description = _opt_prop(node, 'description')
+    confirm_text = next((p for p in node.props if p.name == 'confirm_text'), None)
+    cancel_text = next((p for p in node.props if p.name == 'cancel_text'), None)
+    destructive = next((p for p in node.props if p.name == 'destructive'), None)
+    confirm_event = next((e for e in node.events if e.field_name == 'on_confirm'), None)
+    cancel_event = next((e for e in node.events if e.field_name == 'on_cancel'), None)
+    trigger_node = _find_trigger_child(node)
+
+    attrs = _dialog_open_attrs(node, ctx)
+    w.line(f'<AlertDialog{" " + " ".join(attrs) if attrs else ""}>')
+    w.indent()
+    if trigger_node is not None:
+        ctx.imports.add('AlertDialogTrigger')
+        ctx.no_guard_anchors.add(trigger_node.anchor)
+        w.line('<AlertDialogTrigger asChild>')
+        w.indent()
+        emit_node(trigger_node, w, ctx)
+        w.dedent()
+        w.line('</AlertDialogTrigger>')
+    w.line('<AlertDialogContent>')
+    w.indent()
+    w.line('<AlertDialogHeader>')
+    w.indent()
+    title_js = ctx.prop_js(node, title) if title else js_string('')
+    w.line(f'<AlertDialogTitle>{{{title_js}}}</AlertDialogTitle>')
+    if description:
+        ctx.imports.add('AlertDialogDescription')
+        w.line(f'<AlertDialogDescription>{{{ctx.prop_js(node, description)}}}</AlertDialogDescription>')
+    w.dedent()
+    w.line('</AlertDialogHeader>')
+    w.line('<AlertDialogFooter>')
+    w.indent()
+    cancel_attrs = ''
+    if cancel_event:
+        cancel_attrs = f' onClick={{() => rt.fire({js_string(cancel_event.handler_id)}, {{}})}}'
+    cancel_js = ctx.prop_js(node, cancel_text) if cancel_text else js_string('取消')
+    w.line(f'<AlertDialogCancel{cancel_attrs}>{{{cancel_js}}}</AlertDialogCancel>')
+    action_attrs: list[str] = []
+    if destructive and destructive.default_value is True:
+        action_attrs.append('className="bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90"')
+    if confirm_event:
+        action_attrs.append(f'onClick={{() => rt.fire({js_string(confirm_event.handler_id)}, {{}})}}')
+    confirm_js = ctx.prop_js(node, confirm_text) if confirm_text else js_string('确认')
+    action_str = f' {" ".join(action_attrs)}' if action_attrs else ''
+    w.line(f'<AlertDialogAction{action_str}>{{{confirm_js}}}</AlertDialogAction>')
+    w.dedent()
+    w.line('</AlertDialogFooter>')
+    w.dedent()
+    w.line('</AlertDialogContent>')
+    w.dedent()
+    w.line('</AlertDialog>')
+    _close_visible_guard(guarded, w)
+
+
+@register('Tooltip')
+def emit_tooltip(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    for name in ('Tooltip', 'TooltipContent', 'TooltipProvider', 'TooltipTrigger'):
+        ctx.imports.add(name)
+    guarded = _emit_visible_guard(node, w, ctx)
+
+    text = next((p for p in node.props if p.name == 'text'), None)
+    side = next((p for p in node.props if p.name == 'side'), None)
+
+    w.line('<TooltipProvider>')
+    w.indent()
+    w.line('<Tooltip>')
+    w.indent()
+    w.line('<TooltipTrigger asChild>')
+    w.indent()
+    for child in node.children:
+        ctx.no_guard_anchors.add(child.anchor)
+        emit_node(child, w, ctx)
+    w.dedent()
+    w.line('</TooltipTrigger>')
+    side_attr = f' side={{{ctx.prop_js(node, side)}}}' if side else ''
+    text_js = ctx.prop_js(node, text) if text else js_string('')
+    w.line(f'<TooltipContent{side_attr}>{{{text_js}}}</TooltipContent>')
+    w.dedent()
+    w.line('</Tooltip>')
+    w.dedent()
+    w.line('</TooltipProvider>')
+    _close_visible_guard(guarded, w)
+
+
+@register('Tabs')
+def emit_tabs(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    for name in ('Tabs', 'TabsContent', 'TabsList', 'TabsTrigger'):
+        ctx.imports.add(name)
+    guarded = _emit_visible_guard(node, w, ctx)
+
+    value_prop = next(p for p in node.props if p.name == 'value')
+    change_event = next((e for e in node.events if e.kind == 'change'), None)
+    items = node.children
+
+    attrs: list[str] = []
+    if value_prop.binding == 'client_bind':
+        ctx.add_controlled(node)
+        var = ctx.value_var(node)
+        setter = ctx.setter(node)
+        change_parts = [f'{setter}(v)']
+        if change_event:
+            change_parts.append(f'rt.fire({js_string(change_event.handler_id)}, {{ value: v }})')
+        attrs.append(f'value={{{var}}}')
+        attrs.append(f'onValueChange={{(v) => {{ {"; ".join(change_parts)} }}}}')
+    else:
+        default = value_prop.default_value
+        if not (isinstance(default, str) and default) and items:
+            default = getattr(items[0].component, 'value', '')
+        attrs.append(f'defaultValue={js_string(str(default))}')
+        if change_event:
+            attrs.append(f'onValueChange={{(v) => rt.fire({js_string(change_event.handler_id)}, {{ value: v }})}}')
+
+    w.line(f'<Tabs {" ".join(attrs)}>')
+    w.indent()
+    w.line('<TabsList>')
+    w.indent()
+    for item in items:
+        item_guarded = _emit_visible_guard(item, w, ctx)
+        item_value = js_string(str(getattr(item.component, 'value', '')))
+        label = next((p for p in item.props if p.name == 'label'), None)
+        label_js = f'rt.ov({js_string(item.anchor)}, "label", {js_value(label.default_value if label else "")})'
+        w.line(f'<TabsTrigger value={item_value}>{{{label_js}}}</TabsTrigger>')
+        _close_visible_guard(item_guarded, w)
+    w.dedent()
+    w.line('</TabsList>')
+    for item in items:
+        item_guarded = _emit_visible_guard(item, w, ctx)
+        item_value = js_string(str(getattr(item.component, 'value', '')))
+        w.line(f'<TabsContent value={item_value} className="flex flex-col gap-4">')
+        w.indent()
+        for child in item.children:
+            emit_node(child, w, ctx)
+        w.dedent()
+        w.line('</TabsContent>')
+        _close_visible_guard(item_guarded, w)
+    w.dedent()
+    w.line('</Tabs>')
+    _close_visible_guard(guarded, w)
+
+
+@register('TabItem')
+def emit_tab_item(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    raise CompileError(f"{node.anchor}: TabItem 只能作为 Tabs 的直接子组件(不应独立发射)")
+
+
+@register('Accordion')
+def emit_accordion(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    for name in ('Accordion', 'AccordionContent', 'AccordionItem', 'AccordionTrigger'):
+        ctx.imports.add(name)
+    guarded = _emit_visible_guard(node, w, ctx)
+
+    multiple = next((p for p in node.props if p.name == 'multiple'), None)
+    is_multiple = multiple is not None and multiple.default_value is True
+    type_attr = 'type="multiple"' if is_multiple else 'type="single" collapsible'
+
+    w.line(f'<Accordion {type_attr}>')
+    w.indent()
+    for item in node.children:
+        item_guarded = _emit_visible_guard(item, w, ctx)
+        item_value = js_string(str(getattr(item.component, 'value', '')))
+        title = next((p for p in item.props if p.name == 'title'), None)
+        title_js = ctx.prop_js(item, title) if title else js_string('')
+        w.line(f'<AccordionItem value={item_value}>')
+        w.indent()
+        w.line(f'<AccordionTrigger>{{{title_js}}}</AccordionTrigger>')
+        w.line('<AccordionContent className="flex flex-col gap-4">')
+        w.indent()
+        for child in item.children:
+            emit_node(child, w, ctx)
+        w.dedent()
+        w.line('</AccordionContent>')
+        w.dedent()
+        w.line('</AccordionItem>')
+        _close_visible_guard(item_guarded, w)
+    w.dedent()
+    w.line('</Accordion>')
+    _close_visible_guard(guarded, w)
+
+
+@register('AccordionItem')
+def emit_accordion_item(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    raise CompileError(f"{node.anchor}: AccordionItem 只能作为 Accordion 的直接子组件(不应独立发射)")
+
+
+@register('ScrollArea')
+def emit_scroll_area(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    ctx.imports.add('ScrollArea')
+    guarded = _emit_visible_guard(node, w, ctx)
+    height = next((p for p in node.props if p.name == 'height'), None)
+    height_js = js_string(str(height.default_value)) if height else js_string('16rem')
+    w.line(f'<ScrollArea style={{{{ height: {height_js} }}}} className="rounded-md border">')
+    w.indent()
+    w.line('<div className="flex flex-col gap-4 p-4">')
+    w.indent()
+    for child in node.children:
+        emit_node(child, w, ctx)
+    w.dedent()
+    w.line('</div>')
+    w.dedent()
+    w.line('</ScrollArea>')
     _close_visible_guard(guarded, w)
 
 

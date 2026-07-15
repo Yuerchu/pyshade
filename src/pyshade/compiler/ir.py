@@ -7,7 +7,7 @@ server_ref=ServerState 字段(Phase 3)。
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pyshade.components.base import Component, ControlledMixin, EventSpec, controlled_prop_of, is_sensitive
 from pyshade.expr import ClientVal, Expr
@@ -77,15 +77,21 @@ def build_node_ir(component: Component) -> NodeIR:
             if handler is not None:
                 events.append(EventInfo(field_name=name, kind=specs[0].kind, handler_id=f'{anchor}.{name}'))
             continue
+        value = getattr(component, name)
+        # 子组件槽(children 列表 / trigger 等标量槽)进 children 树,不进 props
+        if isinstance(value, Component):
+            continue
+        if isinstance(value, list) and any(isinstance(item, Component) for item in cast('list[object]', value)):
+            continue
         if name == 'children':
             continue
-        value = getattr(component, name)
+        prop_value = cast('object', value)
         props.append(
             PropInfo(
                 name=name,
-                default_value=value,
-                is_enum=_is_enum_field(value),
-                binding=_classify_binding(component, name, value),
+                default_value=prop_value,
+                is_enum=_is_enum_field(prop_value),
+                binding=_classify_binding(component, name, prop_value),
             )
         )
 
