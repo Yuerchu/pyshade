@@ -2,8 +2,8 @@
 
 用 Python 构建现代桌面应用的框架:Pydantic 组件 DTO 编译成 shadcn/ui React,跑在系统 WebView(pytauri 壳)。
 
-**`docs/design.md` 是架构单一事实源**,改动架构决策必须同步该文档。M0(端到端可行性)、
-M1(表达式系统与编译期校验)、M2(组件铺量/零 Node 打包/路由/Each)已完成,当前迈向 M3(打包分发链)。
+**`docs/design.md` 是架构单一事实源**,改动架构决策必须同步该文档。M0-M3 已完成
+(M3 = standalone 安装包链 + pyshade dev + keep-alive/深链 + theme),当前迈向 M4(文档站与发布)。
 
 ## 关键决策速览(详见 design.md)
 
@@ -13,7 +13,12 @@ M1(表达式系统与编译期校验)、M2(组件铺量/零 Node 打包/路由/E
   Each 模板内普通值=构建期常量(`.$t[` anchor 不可 Update)
 - 表达式子集(§3.4):`&`/`|`/`~` + 比较 + `+`,构造期定型,`__bool__` 抛错,双端求值(to_js/evaluate)
 - 多页面路由(§3.11):route 归客户端(`navigate`→`rt.navigate`,零 IPC);服务端 `Navigate` 编码为
-  `$nav` 保留地址 patch;overrides/push 提升 App 级共享 store,页面状态 unmount 即丢
+  `$nav` 保留地址 patch;overrides/push 提升 App 级共享 store;页面状态默认 unmount 即丢,
+  `keep_alive=True` 保活(display:none);`#/PageName` 深链(生成 App 恒开,runtime 默认关)
+- standalone 打包(§3.12):`pyshade init`(src-tauri 模板)+ `pyshade package`(便携 CPython +
+  cargo-tauri),打包机 = Python + Rust 零 Node;`pyshade.shell.run` 双形态 shim;
+  `pyshade dev` = supervisor/worker 整代重启 + generation SSE 刷新(浏览器向,窗口不进 dev loop);
+  theme 口子只暴露 CSS 变量层(§3.6,对账测试锚定 token)
 - 零 Node 打包(§3.6):`pyshade bundle` = esbuild pin 二进制(裸下载缓存)+ wheel 内物化 vendor
   (NODE_PATH)+ CSS 发版预编译(双层变量保运行时主题);entry.tsx 从 IR 收集,非 import 静态分析
 - 壳层 pytauri(锁 minor 版本,pre-1.0 有 breaking):PyO3 进程内嵌入,无 TCP 端口

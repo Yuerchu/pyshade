@@ -2,6 +2,7 @@
 
 from pyshade.components.base import Component
 from pyshade.page import Page
+from pyshade.theme import Theme
 
 
 class ShadeApp:
@@ -18,6 +19,7 @@ class ShadeApp:
         pages: list[type[Page]],
         extra_components: list[type[Component]] | None = None,
         keep_alive: bool = False,
+        theme: Theme | None = None,
     ) -> None:
         if not pages:
             raise ValueError("ShadeApp 至少需要一个页面")
@@ -26,3 +28,5 @@ class ShadeApp:
         self.extra_components: list[type[Component]] = list(extra_components or [])
         self.keep_alive = keep_alive
         """True → 访问过的页面保持挂载(display:none),ClientVal/受控输入跨切页存活(§3.11)。"""
+        self.theme = theme
+        """覆盖 :root token 的主题(theme.gen.css / bundle 内联);None 零产物。"""

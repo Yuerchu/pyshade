@@ -36,5 +36,9 @@ def compile_app(app: ShadeApp, out_dir: str | Path) -> None:
     extra_tags = [cls._shade_tag for cls in app.extra_components]  # pyright: ignore[reportPrivateUsage]
     (out / 'types.gen.ts').write_text(emit_types(enums, item_models), encoding='utf-8', newline='\n')
     (out / 'app.gen.tsx').write_text(emit_app(page_irs, keep_alive=app.keep_alive), encoding='utf-8', newline='\n')
+    if app.theme is not None:
+        from pyshade.compiler.emit_theme import emit_theme_css
+
+        (out / 'theme.gen.css').write_text(emit_theme_css(app.theme), encoding='utf-8', newline='\n')
     manifest = emit_manifest(page_irs, extra_components=extra_tags)
     (out / 'manifest.json').write_text(manifest, encoding='utf-8', newline='\n')

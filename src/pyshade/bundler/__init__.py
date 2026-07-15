@@ -73,7 +73,12 @@ def bundle_app(
     env = {**os.environ, 'NODE_PATH': str(assets.node_modules)}
     run_esbuild(esbuild, args, cwd=work, env=env)
 
-    write_static(out, assets)
+    theme_css: str | None = None
+    if app.theme is not None:
+        from pyshade.compiler.emit_theme import emit_theme_css
+
+        theme_css = emit_theme_css(app.theme)
+    write_static(out, assets, theme_css=theme_css)
 
     duration = (time.monotonic() - started) * 1000
     size = (out / 'app.js').stat().st_size

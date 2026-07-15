@@ -143,6 +143,9 @@ M2 落地形态(组件铺量期的所有权决策):
 - **CSS 发版时预编译**:仓库内 `@tailwindcss/cli` 产出单 style.css 进 wheel,用户不碰 Tailwind。
   双层变量(`:root` 持值 + `@theme inline` 映射)保证预编译后运行时仍可换主题;`@source` 直接扫
   emitter 的 .py 字符串(v4 扫描器语言无关),CI 以 `check_css_coverage` 断言 golden/ui 全部 class 命中。
+  主题口子(M3):`ShadeApp(theme=Theme(...))` 只暴露 CSS 变量层——token 全量镜像 :root
+  (对账测试锚定),compile 发 `theme.gen.css`、bundle 内联 `<style>`(三件套契约不变),
+  值原样透传 + 注入护栏;dark mode 留 M4(`:root{}` 包裹为 `.dark{}` 留位)。
 - **单一源码真相**:wheel 内 `pyshade/_frontend/` 由 hatch 构建钩子从 `frontend/` 注入
   (fresh checkout 无产物时不注入,editable 安装回退仓库布局);CI `bundle-zero-node` job 在
   剔除 node 的环境里以 wheel 安装打包并跑真机 E2E,与 vite 管线产物互为对照。
@@ -212,8 +215,15 @@ M2 落地形态(组件铺量期的所有权决策):
   初始页 = `pages[0]`),骨架是手写 runtime(`ShadeAppProvider` + `ShadeRouter`)。overrides 提升
   App 级——服务端 `Update` 不因切页蒸发;push 订阅提升 App 层——切页不断连、他页停留时后台推送不丢。
   `usePageRuntime` 双模式:有 Provider 消费共享 store,无 Provider(单页挂载/单测)回落页面本地。
-- **页面状态 unmount 即丢(定案)**:ClientVal/受控输入随页面卸载重置,跨页存活的归宿是 ServerState;
-  keep-alive 与深链归 M3。页面类名是 anchor/handlerId/路由的共同命名空间,重复即 CompileError。
+- **页面状态默认 unmount 即丢**:ClientVal/受控输入随页面卸载重置,跨页数据的正门是 ServerState。
+  **keep-alive(M3 已落地)**:`ShadeApp(keep_alive=True)` 时访问过的页面保持挂载
+  (display:none 包裹,不用 React `<Activity>`——语义可预期,Activity 记升级路径),
+  本地状态跨切页存活;已知限制诚实文档——portal 浮层(Dialog/Tooltip)渲染进 body
+  不受隐藏包裹约束、不保证滚动位置。页面类名是 anchor/handlerId/路由的共同命名空间,重复即 CompileError。
+- **深链(M3 已落地)**:`#/PageName` hash 路由。生成的 App 恒开(pageNames 校验 + deepLink),
+  runtime 默认关(testkit 双 Provider 同 document 不串扰的前提);启动 hash 覆盖初始页
+  (replaceState 规范化),navigate 直赋 hash(历史条目,浏览器后退可用),hashchange 反向驱动,
+  无效目标 warn + 忽略不回写。打包 WebView 无地址栏 → 恒回落 pages[0],为 web target 铺路。
 
 ### 3.12 打包分发链(M3 已实现,`pyshade init` + `pyshade package`)
 
@@ -295,9 +305,13 @@ M0 七项验证全部通过(隐藏窗口 `visible:false`,JS 正常执行,`docume
   循环容器(整表替换 + item_index 事件)。examples:component_gallery(生成代码过真实 tsc)、
   task_board(路由 + Each 真机 E2E)。未进 M2(移交 M3):受限闭包 handler、`--watch`、
   theme 主题口子、Each 嵌套/增量/per-item 受控、keep-alive 与深链。
-- **M3 — 打包分发链**:
-  python-build-standalone + Tauri bundler(pytauri 官方路径),三平台(Windows/macOS/Linux)
-  安装包产出;处理 macOS rpath 修补与 Linux glibc 基线。
+- **M3 — 打包分发链**(已完成,详见 §3.12/§3.11/§3.6):
+  `pyshade init` + `pyshade package` 两条命令出三平台安装包(打包机 = Python + Rust,零 Node;
+  macOS rpath 修补与 Linux rpath 已内建);release workflow 三平台 matrix + 主 CI Windows
+  打包冒烟。搭车交付:`pyshade dev`(supervisor/worker 整代重启 + generation SSE 自动刷新,
+  取代从未工作的 `bundle --watch`)、路由 keep-alive、`#/PageName` 深链、theme 主题口子。
+  未进 M3(移交 M4+):签名/公证、dark mode、窗口热重载、AppImage 验证、
+  受限闭包 handler、Each 增强、服务端弹窗。
 - **M4 — 文档站与发布**:
   schema 生成 props 表、llms.txt、web target dogfooding 文档站、PyPI 发布。
 
@@ -306,11 +320,14 @@ M0 是风险所在,M2 之后是体力活;先验证再铺量。
 ## 6. 开放问题
 
 - ASGI over IPC 适配器是否作为独立包发布(如 `pytauri-asgi`),回馈 pytauri 生态并摊薄维护成本。
-- 热重载设计:编译路线下 dev 模式的增量编译与状态保持;pytauri standalone 模式下 Python 代码变更
-  需重装的问题如何规避(dev 用 editable install)。
+- 原生窗口热重载:M3 定案 `pyshade dev` 面向浏览器(窗口进程即 Python 进程,重启必关窗;
+  "壳+子进程 server"是 §3.7 否决的形态);窗口侧的热重载路径仍开放。dev loop 的增量编译
+  (worker 已打 import/bundle 阶段耗时基线)是 M4 优化项。
 - shadcn 上游同步策略:shadcn 组件源码更新后,PyShade 内置副本如何跟进。
-- Tailwind 主题暴露边界:只暴露 CSS 变量层(shadcn token),Python 用户不碰 Tailwind class——具体 API
-  待设计(双层变量的运行时可覆盖性已在 §3.6 打底,`ShadeApp(theme=...)` 口子未做)。
+- 主题 dark mode:亮色口子已落地(§3.6),暗色需要切换机制(prefers-color-scheme vs class)
+  与 runtime 交互设计,M4。
+- 安装包签名/公证(macOS notarization / Windows 代码签名):M4+;当前 release notes
+  附未签名产物的打开指引。
 - 服务端弹窗:`open` 归客户端所有(§3.3),服务端想主动弹窗(全局错误/更新提示)缺正门,
   语义与 `$nav` 类似的保留地址是候选。
 - web target 的优先级:仅服务文档站,还是作为正式发布特性。
