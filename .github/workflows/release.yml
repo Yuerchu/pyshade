@@ -97,18 +97,21 @@ jobs:
           VENV_BIN=$(ls -d .venv-pkg/Scripts 2>/dev/null || echo .venv-pkg/bin)
           "$VENV_BIN/pyshade" package task_board.app:app --dir examples/task_board \
             --with wheel-dist/pyshade-*.whl --bundles ${{ matrix.bundles }} --out dist-package
-      - name: Smoke run bare binary (PYSHADE_SMOKE=1)
+      # Unix 的 rpath 面向安装后布局($ORIGIN/../lib/<product>/lib 与 .app Resources),
+      # 裸 exe 平铺资源找不到 libpython → smoke 直接验安装后形态(比裸 exe 更真实)
+      - name: Smoke run (PYSHADE_SMOKE=1)
         shell: bash
         env:
           PYSHADE_SMOKE: '1'
         run: |
-          BIN=examples/task_board/src-tauri/target/bundle-release/task-board
           if [ "$RUNNER_OS" = "Windows" ]; then
-            "$BIN.exe"
+            examples/task_board/src-tauri/target/bundle-release/task-board.exe
           elif [ "$RUNNER_OS" = "Linux" ]; then
-            xvfb-run -a "$BIN"
+            sudo dpkg -i dist-package/*.deb
+            xvfb-run -a /usr/bin/task-board
           else
-            "$BIN"
+            APP=$(ls -d dist-package/*.app | head -1)
+            "$APP"/Contents/MacOS/*
           fi
       - name: Report artifact sizes
         shell: bash
