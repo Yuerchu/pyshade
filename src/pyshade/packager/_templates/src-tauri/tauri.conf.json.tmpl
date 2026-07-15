@@ -1,0 +1,31 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "{{product_name}}",
+  "version": "{{version}}",
+  "identifier": "{{identifier}}",
+  "build": {
+    "frontendDist": "./frontend",
+    "features": ["pytauri/standalone"]
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "{{window_title}}",
+        "width": {{window_width}},
+        "height": {{window_height}}
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ]
+  }
+}

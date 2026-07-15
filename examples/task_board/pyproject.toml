@@ -5,6 +5,11 @@ description = "PyShade M2 演示:多页面路由 + Each 列表渲染 + 服务端
 requires-python = ">=3.10,<3.14"
 dependencies = [
   "pyshade",
+]
+
+[dependency-groups]
+# 开发运行走 pytauri-wheel;standalone 打包不装它(ext_mod 由 Rust 二进制注入)
+dev = [
   "pytauri-wheel>=0.8,<0.9",
 ]
 

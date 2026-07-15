@@ -47,6 +47,23 @@ def _bundle(args: argparse.Namespace) -> None:
     print(f"打包完成 → {result.out_dir}(app.js {result.app_js_bytes / 1024:.0f} KB)")
 
 
+def _init(args: argparse.Namespace) -> None:
+    from pyshade.packager._scaffold import ScaffoldError, init_project
+
+    try:
+        result = init_project(
+            Path(args.dir),
+            package=args.package,
+            product_name=args.product_name,
+            identifier=args.identifier,
+            force=args.force,
+        )
+    except ScaffoldError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+    print(f"src-tauri 就绪 → {result.src_tauri_dir}(新建 {len(result.created)},跳过 {len(result.skipped)})")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog='pyshade', description='PyShade 构建工具')
     sub = parser.add_subparsers(dest='command')
@@ -65,9 +82,18 @@ def main() -> None:
     testkit_parser = sub.add_parser('bundle-testkit', help='内部:testkit 的 esbuild 构建(CI 对照实验)')
     testkit_parser.add_argument('--out', default='frontend/dist-testkit/testkit.js', help='输出文件')
 
+    init_parser = sub.add_parser('init', help='生成 src-tauri 打包工程(standalone 安装包,配合 pyshade package)')
+    init_parser.add_argument('--dir', default='.', help='项目根(pyproject.toml 所在)')
+    init_parser.add_argument('--package', default=None, help='src 布局下的包名(src/ 下多包时必填)')
+    init_parser.add_argument('--product-name', default=None, help='安装包产品名(缺省读 Tauri.toml 或用发行名)')
+    init_parser.add_argument('--identifier', default=None, help='应用标识(如 cn.example.myapp;缺省读 Tauri.toml)')
+    init_parser.add_argument('--force', action='store_true', help='覆盖已存在的文件')
+
     args = parser.parse_args()
     if args.command == 'build':
         _build(args)
+    elif args.command == 'init':
+        _init(args)
     elif args.command == 'bundle':
         _bundle(args)
     elif args.command == 'bundle-testkit':

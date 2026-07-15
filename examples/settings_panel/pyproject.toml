@@ -5,6 +5,11 @@ description = "PyShade M1 全特性演示:客户端表达式 + ServerState auto-
 requires-python = ">=3.10,<3.14"
 dependencies = [
   "pyshade",
+]
+
+[dependency-groups]
+# 开发运行走 pytauri-wheel;standalone 打包不装它(ext_mod 由 Rust 二进制注入)
+dev = [
   "pytauri-wheel>=0.8,<0.9",
 ]
 
