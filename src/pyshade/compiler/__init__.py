@@ -10,7 +10,7 @@ from pyshade.app import ShadeApp
 from pyshade.compiler.checks import check_app, check_page_ir
 from pyshade.compiler.emit_app import emit_app, emit_manifest
 from pyshade.compiler.emit_page import emit_page
-from pyshade.compiler.emit_types import collect_enums, emit_types
+from pyshade.compiler.emit_types import collect_enums, collect_item_models, emit_types
 from pyshade.compiler.ir import PageIR, build_page_ir
 
 
@@ -32,8 +32,9 @@ def compile_app(app: ShadeApp, out_dir: str | Path) -> None:
         (pages_dir / f'{page_ir.name}.gen.tsx').write_text(tsx, encoding='utf-8', newline='\n')
 
     enums = collect_enums(page_irs)
+    item_models = collect_item_models(page_irs)
     extra_tags = [cls._shade_tag for cls in app.extra_components]  # pyright: ignore[reportPrivateUsage]
-    (out / 'types.gen.ts').write_text(emit_types(enums), encoding='utf-8', newline='\n')
+    (out / 'types.gen.ts').write_text(emit_types(enums, item_models), encoding='utf-8', newline='\n')
     (out / 'app.gen.tsx').write_text(emit_app(page_irs), encoding='utf-8', newline='\n')
     manifest = emit_manifest(page_irs, extra_components=extra_tags)
     (out / 'manifest.json').write_text(manifest, encoding='utf-8', newline='\n')

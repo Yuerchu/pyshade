@@ -11,11 +11,13 @@ client_bind 受控 prop 与 ClientVal 共用 useState(别名);全部客户端所
 from collections.abc import Callable
 from typing import Any, cast
 
+from pydantic import BaseModel
+
 from pyshade.compiler.errors import CompileError
 from pyshade.compiler.ir import NodeIR, PageIR, PropInfo, iter_node_irs
 from pyshade.compiler.writer import TsxWriter, js_string, js_value
 from pyshade.components.base import Component
-from pyshade.expr import ClientVal, Expr, ExprType, PropRef
+from pyshade.expr import ClientVal, Expr, ExprType, ItemRef, PropRef
 from pyshade.page import anchor_of
 from pyshade.state import ServerRef
 
@@ -97,6 +99,17 @@ def register(tag: str) -> Callable[[EmitFn], EmitFn]:
     return decorator
 
 
+class _LoopContext:
+    """Each 模板发射期间的循环上下文:item/index 变量名与 key 字段。"""
+
+    __slots__ = ('item_var', 'index_var', 'key_field')
+
+    def __init__(self, item_var: str, index_var: str, key_field: str | None) -> None:
+        self.item_var = item_var
+        self.index_var = index_var
+        self.key_field = key_field
+
+
 class _PageEmitContext:
     def __init__(self) -> None:
         self.state_hooks: list[str] = []
@@ -114,6 +127,10 @@ class _PageEmitContext:
         """页面含 ServerRef 绑定 → usePageRuntime({ push: true }) 订阅 /_shade/push。"""
         self.no_guard_anchors: set[str] = set()
         """asChild 槽(Dialog trigger / Tooltip 宿主)不发 visible guard(单元素约束)。"""
+        self.loop: _LoopContext | None = None
+        """Each 模板发射中(§3.3 模板行):plain prop 发字面量,事件 payload 带 item_index。"""
+        self.item_models: dict[str, type[BaseModel]] = {}
+        """Each 项模型(类名 → 类):页面头部发 `import type { ... } from "../types.gen"`。"""
 
     def add_controlled(self, node: NodeIR) -> None:
         self.controlled_inputs.append(node)
@@ -135,6 +152,9 @@ class _PageEmitContext:
         if prop.binding == 'server_ref':
             ref = cast('ServerRef[Any]', prop.default_value)
             return f'rt.ov({js_string(ref.target)}, {js_string(ref.field)}, {js_value(ref.default)})'
+        if self.loop is not None:
+            # 模板内 plain prop 是构建期常量(§3.3):模板 anchor 跨 item 共享,rt.ov 无 per-item 语义
+            return js_value(prop.default_value)
         return _ov(node.anchor, prop.name, prop.default_value)
 
 
@@ -204,12 +224,16 @@ def _prepare_bindings(page_ir: PageIR, ctx: _PageEmitContext) -> None:
                 ctx.uses_push = True
             if prop.binding not in ('expr', 'client_bind'):
                 continue
-            ctx.bound_props.append(f'{node.anchor}.{prop.name}')
+            if '.$t[' not in node.anchor:
+                # 模板 anchor 不进 boundProps:Update 构造期即拒绝,patch 永远不可能指向模板
+                ctx.bound_props.append(f'{node.anchor}.{prop.name}')
             if prop.binding != 'expr':
                 continue
             for leaf in cast('Expr[Any]', prop.default_value).refs():
                 if leaf in ctx.scope:
                     continue
+                if isinstance(leaf, ItemRef):
+                    continue  # 循环变量:Each emitter 进入模板时注册 scope(checks 已验归属)
                 if isinstance(leaf, PropRef):
                     anchor = anchor_of(leaf.component)
                     base = ctx.alias.get(anchor) or _var_name(anchor)
@@ -229,6 +253,8 @@ def _emit_visible_guard(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> bo
         w.line(f'{{({js}) && (')
         w.indent()
         return True
+    if ctx.loop is not None and visible_prop.binding == 'plain':
+        return False  # 模板 plain visible 是构建期常量;checks 已保证其为 True
     if visible_prop.binding == 'server_ref' or visible_prop.default_value is True:
         w.line(f'{{{ctx.prop_js(node, visible_prop)} && (')
         w.indent()
@@ -275,7 +301,13 @@ def emit_button(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
         attrs.append(f'disabled={{{ctx.prop_js(node, disabled)}}}')
     if click_event:
         hid = js_string(click_event.handler_id)
-        if is_submit:
+        if ctx.loop is not None:
+            # 模板事件共享 handlerId,payload 携带 item_index(+item_key)定位数据
+            payload_parts = [f'item_index: {ctx.loop.index_var}']
+            if ctx.loop.key_field is not None:
+                payload_parts.append(f'item_key: {ctx.loop.item_var}.{ctx.loop.key_field}')
+            attrs.append(f'onClick={{() => rt.fire({hid}, {{ {", ".join(payload_parts)} }})}}')
+        elif is_submit:
             attrs.append(f'onClick={{() => rt.fire({hid}, {{ values: collectValues(true) }})}}')
         else:
             attrs.append(f'onClick={{() => rt.fire({hid}, {{}})}}')
@@ -989,6 +1021,60 @@ def emit_scroll_area(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     _close_visible_guard(guarded, w)
 
 
+@register('Each')
+def emit_each(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    """列表渲染:`items.map((xItem: T, xIndex) => <Fragment key={...}>模板</Fragment>)`。
+
+    rt.ov 显式标注 `<T[]>`:空列表 fallback 会推成 never[],必须显式。
+    """
+    from pyshade.components.each import Each, item_model_of, item_scalar_type_of, iter_item_refs
+
+    each = cast('Each', node.component)
+    # visible guard 并进同一个 JSX 表达式(`{guard && items.map(...)}`):
+    # 复用 _emit_visible_guard 的 `{... && (` 包裹会让 map 的花括号变成非法嵌套
+    visible_prop = next(p for p in node.props if p.name == 'visible')
+    guard_js: str | None = None
+    if visible_prop.binding == 'expr':
+        guard_js = f'({cast("Expr[Any]", visible_prop.default_value).to_js(ctx.scope)})'
+    elif visible_prop.binding == 'server_ref' or visible_prop.default_value is True:
+        guard_js = ctx.prop_js(node, visible_prop)
+
+    items_prop = next(p for p in node.props if p.name == 'items')
+    ref = cast('ServerRef[Any]', items_prop.default_value)
+    var = _var_name(node.anchor)
+    item_var, index_var = f'{var}Item', f'{var}Index'
+
+    model = item_model_of(each)
+    if model is not None:
+        item_ts = model.__name__
+        ctx.item_models[item_ts] = model
+    else:
+        scalar = item_scalar_type_of(each)
+        assert scalar is not None
+        item_ts = _TS_TYPE[scalar]
+
+    for item_ref in iter_item_refs(each):
+        ctx.scope[item_ref] = item_var if item_ref.field == '' else f'{item_var}.{item_ref.field}'
+
+    items_js = f'rt.ov<{item_ts}[]>({js_string(ref.target)}, {js_string(ref.field)}, {js_value(ref.default)})'
+    key_js = index_var if each.key is None else f'{item_var}.{each.key}'
+    prefix = f'{guard_js} && ' if guard_js is not None else ''
+    w.line(f'{{{prefix}{items_js}.map(({item_var}: {item_ts}, {index_var}: number) => (')
+    w.indent()
+    w.line(f'<Fragment key={{{key_js}}}>')
+    w.indent()
+    ctx.loop = _LoopContext(item_var, index_var, each.key)
+    try:
+        for child in node.children:
+            emit_node(child, w, ctx)
+    finally:
+        ctx.loop = None
+    w.dedent()
+    w.line('</Fragment>')
+    w.dedent()
+    w.line('))}')
+
+
 def emit_node(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     emitter = EMITTERS.get(node.tag)
     if emitter is None:
@@ -1016,6 +1102,8 @@ def emit_page(page_ir: PageIR) -> str:
     w = TsxWriter()
     w.line('/* 由 pyshade 编译器生成 — 请勿手改。 */')
     react_imports: list[str] = []
+    if any(node.tag == 'Each' for node in iter_node_irs(page_ir)):
+        react_imports.append('Fragment')
     if ctx.controlled_inputs or ctx.client_vals:
         react_imports.append('useState')
     if ctx.sensitive_inputs:
@@ -1032,6 +1120,8 @@ def emit_page(page_ir: PageIR) -> str:
         w.line(f'import {{ {", ".join(sorted(names))} }} from {module};')
 
     w.line('import { usePageRuntime } from "@/runtime/page";')
+    if ctx.item_models:
+        w.line(f'import type {{ {", ".join(sorted(ctx.item_models))} }} from "../types.gen";')
     w.line()
     w.line(f'export function {page_ir.name}() {{')
     w.indent()

@@ -31,10 +31,13 @@ class EventContext(BaseModel):
     values:页面命名输入的快照(含 ClientVal 条目,数值型 ClientVal 为 int/float);
     敏感值仅 submit=True 的事件携带(design.md §3.8)。
     value:change 类事件的新值。
+    item_index/item_key:Each 模板事件自动携带(M2 Phase 6);key 未指定时 item_key 为 None。
     """
 
     values: dict[str, str | bool | int | float] = {}
     value: str | bool | int | float | None = None
+    item_index: int | None = None
+    item_key: str | int | None = None
 
 
 class Update:
@@ -42,6 +45,12 @@ class Update:
 
     def __init__(self, target: Component, **props: Any) -> None:
         self.target = anchor_of(target)  # 未挂 Page 时抛 LayoutError
+        if '.$t[' in self.target:
+            # 所有权公理(design.md §3.3 模板行):模板 plain prop 是构建期常量
+            raise ValueError(
+                f"{self.target} 在 Each 模板内:模板 plain prop 是构建期常量,不能 Update;"
+                "列表内容请整表替换 ServerState 字段(如 chat.messages = [*chat.messages, msg])"
+            )
         fields = type(target).model_fields
         probe = target.model_copy()
         validator = type(target).__pydantic_validator__

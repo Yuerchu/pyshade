@@ -9,7 +9,15 @@ server_ref=ServerState 字段(Phase 3)。
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
-from pyshade.components.base import Component, ControlledMixin, EventSpec, controlled_prop_of, is_sensitive
+from pyshade.components.base import (
+    Component,
+    ControlledMixin,
+    EventSpec,
+    TemplateContainer,
+    controlled_prop_of,
+    is_sensitive,
+    template_roots_of,
+)
 from pyshade.expr import ClientVal, Expr
 from pyshade.nav import NavigateAction
 from pyshade.page import Page, anchor_of, iter_children
@@ -110,6 +118,9 @@ def build_node_ir(component: Component) -> NodeIR:
         )
 
     children_ir = [build_node_ir(child) for child in iter_children(component)]
+    if isinstance(component, TemplateContainer):
+        # 模板子树进 children:checks 的 G-E 规则与 emit 的 .map 包装都按 children 消费
+        children_ir.extend(build_node_ir(template_root) for template_root in template_roots_of(component))
 
     return NodeIR(
         anchor=anchor,

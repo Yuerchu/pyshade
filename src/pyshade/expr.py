@@ -196,19 +196,19 @@ class Expr(Generic[T]):
         """Python 侧按 JS 同一语义求值;叶子取 snapshot 中的值,缺席回落到叶子初始值。"""
         raise NotImplementedError
 
-    def refs(self) -> 'list[ClientVal[Any] | PropRef[Any]]':
+    def refs(self) -> 'list[ClientVal[Any] | PropRef[Any] | ItemRef[Any]]':
         """依赖收集:返回树中全部叶子(按文档序去重),供编译期校验。"""
-        out: list[ClientVal[Any] | PropRef[Any]] = []
+        out: list[ClientVal[Any] | PropRef[Any] | ItemRef[Any]] = []
         self._collect_refs(out, set())
         return out
 
-    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any]]', seen: set[int]) -> None:
+    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any] | ItemRef[Any]]', seen: set[int]) -> None:
         raise NotImplementedError
 
 
 def _child_js(child: 'Expr[Any]', scope: 'Mapping[Expr[Any], str]') -> str:
     js = child.to_js(scope)
-    if isinstance(child, (LiteralNode, ClientVal, PropRef)):
+    if isinstance(child, (LiteralNode, ClientVal, PropRef, ItemRef)):
         return js
     return f'({js})'
 
@@ -235,7 +235,7 @@ class LiteralNode(Expr[T]):
     def evaluate(self, snapshot: 'Mapping[Expr[Any], object] | None' = None) -> T:
         return self.value
 
-    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any]]', seen: set[int]) -> None:
+    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any] | ItemRef[Any]]', seen: set[int]) -> None:
         return
 
     def __repr__(self) -> str:
@@ -264,7 +264,7 @@ class ClientVal(Expr[T]):
             return cast('T', snapshot[self])
         return self.default
 
-    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any]]', seen: set[int]) -> None:
+    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any] | ItemRef[Any]]', seen: set[int]) -> None:
         if id(self) not in seen:
             seen.add(id(self))
             out.append(self)
@@ -306,13 +306,45 @@ class PropRef(Expr[T]):
             return cast('T', cast('Expr[Any]', current).evaluate(snapshot))
         return cast('T', current)
 
-    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any]]', seen: set[int]) -> None:
+    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any] | ItemRef[Any]]', seen: set[int]) -> None:
         if id(self) not in seen:
             seen.add(id(self))
             out.append(self)
 
     def __repr__(self) -> str:
         return f'PropRef({type(self.component).__name__}.{self.prop})'
+
+
+class ItemRef(Expr[T]):
+    """Each 模板的项字段叶子(M2 Phase 6):由 ItemProxy 属性访问构造并 memoize
+    (scope/snapshot 按身份哈希,同字段必须复用同一叶子)。
+
+    loop_token 标识归属的 Each 实例;编译期 checks 据此拒绝 ItemRef 逃逸出模板。
+    field 为 '' 表示标量项(整个 item 即值)。evaluate 需要 item_snapshot() 构造的快照。
+    """
+
+    __slots__ = ('type', 'loop_token', 'field')
+
+    def __init__(self, loop_token: object, field: str, type_: ExprType) -> None:
+        self.type = type_
+        self.loop_token = loop_token
+        self.field = field
+
+    def to_js(self, scope: 'Mapping[Expr[Any], str]') -> str:
+        return _scope_var(self, scope)
+
+    def evaluate(self, snapshot: 'Mapping[Expr[Any], object] | None' = None) -> T:
+        if snapshot is not None and self in snapshot:
+            return cast('T', snapshot[self])
+        raise KeyError(f"{self!r} 没有值:ItemRef 求值需要 item_snapshot(each, item) 构造的快照")
+
+    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any] | ItemRef[Any]]', seen: set[int]) -> None:
+        if id(self) not in seen:
+            seen.add(id(self))
+            out.append(self)
+
+    def __repr__(self) -> str:
+        return f'ItemRef(.{self.field})' if self.field else 'ItemRef(<item>)'
 
 
 class UnaryNot(Expr[bool]):
@@ -330,7 +362,7 @@ class UnaryNot(Expr[bool]):
     def evaluate(self, snapshot: 'Mapping[Expr[Any], object] | None' = None) -> bool:
         return not self.operand.evaluate(snapshot)
 
-    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any]]', seen: set[int]) -> None:
+    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any] | ItemRef[Any]]', seen: set[int]) -> None:
         self.operand._collect_refs(out, seen)
 
     def __repr__(self) -> str:
@@ -356,7 +388,7 @@ class BoolOp(Expr[bool]):
             return bool(self.left.evaluate(snapshot) and self.right.evaluate(snapshot))
         return bool(self.left.evaluate(snapshot) or self.right.evaluate(snapshot))
 
-    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any]]', seen: set[int]) -> None:
+    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any] | ItemRef[Any]]', seen: set[int]) -> None:
         self.left._collect_refs(out, seen)
         self.right._collect_refs(out, seen)
 
@@ -382,7 +414,7 @@ class Compare(Expr[bool]):
         compare = _PY_COMPARE[self.op]
         return bool(compare(self.left.evaluate(snapshot), self.right.evaluate(snapshot)))
 
-    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any]]', seen: set[int]) -> None:
+    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any] | ItemRef[Any]]', seen: set[int]) -> None:
         self.left._collect_refs(out, seen)
         self.right._collect_refs(out, seen)
 
@@ -408,7 +440,7 @@ class Concat(Expr[T]):
         right: Any = self.right.evaluate(snapshot)
         return cast('T', left + right)
 
-    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any]]', seen: set[int]) -> None:
+    def _collect_refs(self, out: 'list[ClientVal[Any] | PropRef[Any] | ItemRef[Any]]', seen: set[int]) -> None:
         self.left._collect_refs(out, seen)
         self.right._collect_refs(out, seen)
 

@@ -5,7 +5,7 @@
 """
 
 from collections.abc import Callable
-from typing import Any, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict, PrivateAttr
 
@@ -72,6 +72,24 @@ class ControlledMixin(Generic[T]):
 def controlled_prop_of(component: 'ControlledMixin[Any]') -> str:
     """框架内部:读取受控 prop 名。"""
     return type(component)._controlled_prop  # pyright: ignore[reportPrivateUsage]
+
+
+class TemplateContainer:
+    """模板容器混入(Each):模板子树存 PrivateAttr,不进 model_fields。
+
+    iter_children 天然跳过(不重复计入普通 children);page 布局、iter_nodes 与
+    IR 构建经 template_roots_of 特殊遍历,模板 anchor 刻为 `{容器}.$t[i]`。
+    """
+
+    __slots__ = ()
+
+
+def template_roots_of(container: TemplateContainer) -> list[Component]:
+    """框架内部:读取模板容器的模板根节点列表。"""
+    roots = getattr(container, '_template_roots', None)
+    if not isinstance(roots, list):
+        raise TypeError(f"{type(container).__name__} 缺少 _template_roots;TemplateContainer 需配合 PrivateAttr 使用")
+    return cast('list[Component]', roots)
 
 
 def read_anchor(component: Component) -> str | None:

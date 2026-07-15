@@ -11,6 +11,7 @@ from pyshade.components.button import Button
 from pyshade.components.card import Card
 from pyshade.components.checkbox import Checkbox
 from pyshade.components.dialog import AlertDialog, Dialog
+from pyshade.components.each import Each, item_snapshot
 from pyshade.components.enums import (
     AlertVariant,
     BadgeVariant,
@@ -49,9 +50,11 @@ __all__ = [
     'Checkbox',
     'Component',
     'Dialog',
+    'Each',
     'EventSpec',
     'Handler',
     'Input',
+    'item_snapshot',
     'Option',
     'Orientation',
     'PasswordInput',

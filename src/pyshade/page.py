@@ -12,7 +12,14 @@ import warnings
 from collections.abc import Iterator
 from typing import Any, ClassVar, cast
 
-from pyshade.components.base import Component, EventSpec, read_anchor, write_anchor
+from pyshade.components.base import (
+    Component,
+    EventSpec,
+    TemplateContainer,
+    read_anchor,
+    template_roots_of,
+    write_anchor,
+)
 from pyshade.expr import ClientVal, read_owner, write_owner
 from pyshade.nav import NavigateAction
 
@@ -79,13 +86,18 @@ def _resolve_layout(page_name: str, named: list[tuple[str, Component]]) -> tuple
     has_parent: set[int] = set()
     parent_anchor_of: dict[int, str] = {}
 
-    def visit(parent: Component) -> None:
+    def visit(parent: Component, *, in_template: bool = False) -> None:
         parent_anchor = read_anchor(parent)
         if parent_anchor is None:  # 防御:visit 只对已刻 anchor 的组件调用
             raise LayoutError("内部错误:父组件缺少 anchor")
         for index, child in enumerate(iter_children(parent)):
             child_id = id(child)
             if child_id in named_by_id:
+                if in_template:
+                    raise LayoutError(
+                        f"{parent_anchor} 的模板引用了页面命名字段 {page_name}.{named_by_id[child_id]};"
+                        "模板组件必须在 render 内新建"
+                    )
                 if child_id in has_parent:
                     raise LayoutError(
                         f"{page_name}.{named_by_id[child_id]} 同时出现在 "
@@ -102,14 +114,30 @@ def _resolve_layout(page_name: str, named: list[tuple[str, Component]]) -> tuple
                 child_anchor = f'{parent_anchor}[{index}]'
                 write_anchor(child, child_anchor)
                 anchors[child_anchor] = child
-                if has_bound_events(child):
+                if has_bound_events(child) and not in_template:
+                    # 模板节点天然匿名,handlerId 随模板重排漂移是编译期一体再生的,不告警
                     warnings.warn(
                         f"{child_anchor} 是匿名组件且绑定了事件,插入兄弟组件会导致 handlerId 漂移;"
                         "建议将其命名为页面字段",
                         UserWarning,
                         stacklevel=2,
                     )
-                visit(child)
+                visit(child, in_template=in_template)
+        if isinstance(parent, TemplateContainer):
+            for index, template_root in enumerate(template_roots_of(parent)):
+                root_id = id(template_root)
+                if root_id in named_by_id:
+                    raise LayoutError(
+                        f"{parent_anchor} 的模板引用了页面命名字段 {page_name}.{named_by_id[root_id]};"
+                        "模板组件必须在 render 内新建"
+                    )
+                duplicate = read_anchor(template_root)
+                if duplicate is not None:
+                    raise LayoutError(f"{parent_anchor} 的模板组件已属于 {duplicate};组件实例不可复用,请分别创建")
+                template_anchor = f'{parent_anchor}.$t[{index}]'
+                write_anchor(template_root, template_anchor)
+                anchors[template_anchor] = template_root
+                visit(template_root, in_template=True)
 
     for _name, comp in named:
         visit(comp)
@@ -158,12 +186,15 @@ class Page:
 
 
 def iter_nodes(page: type[Page]) -> Iterator[Component]:
-    """前序遍历页面全部组件(编译器与 EventRegistry 共用)。"""
+    """前序遍历页面全部组件,含模板子树(编译器与 EventRegistry 共用)。"""
 
     def walk(component: Component) -> Iterator[Component]:
         yield component
         for child in iter_children(component):
             yield from walk(child)
+        if isinstance(component, TemplateContainer):
+            for template_root in template_roots_of(component):
+                yield from walk(template_root)
 
     for root in page.__shade_roots__:
         yield from walk(root)

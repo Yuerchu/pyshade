@@ -12,7 +12,7 @@ from pyshade.compiler.errors import CompileError
 from pyshade.compiler.ir import NodeIR, PageIR, PropInfo, iter_node_irs
 from pyshade.components.base import Component, EventSpec, is_sensitive, read_anchor
 from pyshade.events import validate_handler
-from pyshade.expr import ClientVal, Expr, ExprType, PropRef, read_owner
+from pyshade.expr import ClientVal, Expr, ExprType, ItemRef, PropRef, read_owner
 from pyshade.state import ServerRef
 
 _JS_RESERVED = frozenset(
@@ -77,7 +77,7 @@ def check_page_ir(page_ir: PageIR) -> None:
     seen_anchors: set[str] = set()
     state = _ExprState(vals_by_id={id(val): name for name, val in page_ir.client_vals.items()})
     for root in page_ir.roots:
-        _check_node(root, page_ir.name, seen_anchors, state, parent_tag=None)
+        _check_node(root, page_ir.name, seen_anchors, state, parent_tag=None, loop_token=None)
     _check_client_val_writers(page_ir, state)
     _check_var_collisions(page_ir)
 
@@ -99,7 +99,15 @@ def check_app(page_irs: list[PageIR]) -> None:
                     )
 
 
-def _check_node(node: NodeIR, page_name: str, seen: set[str], state: _ExprState, *, parent_tag: str | None) -> None:
+def _check_node(  # noqa: PLR0913  # 遍历状态天然多参(内部函数)
+    node: NodeIR,
+    page_name: str,
+    seen: set[str],
+    state: _ExprState,
+    *,
+    parent_tag: str | None,
+    loop_token: object | None,
+) -> None:
     if node.anchor in seen:
         raise CompileError(f"{node.anchor}: anchor 重复(内部错误)")
     seen.add(node.anchor)
@@ -108,17 +116,24 @@ def _check_node(node: NodeIR, page_name: str, seen: set[str], state: _ExprState,
     _check_sensitive(node)
     _check_event_handlers(node)
     _check_slot_nesting(node, parent_tag)
+    if loop_token is not None:
+        _check_template_node(node)
     _check_component_rules(node)
     for prop in node.props:
         if prop.binding == 'client_bind':
             _check_client_bind(node, prop, page_name, state)
         elif prop.binding == 'expr':
-            _check_expr_prop(node, prop, page_name, state)
+            _check_expr_prop(node, prop, page_name, state, loop_token=loop_token)
         elif prop.binding == 'server_ref':
             _check_server_ref(node, prop)
 
+    child_token = loop_token
+    if node.tag == 'Each':  # 嵌套 Each 已被 _check_template_node 拒绝,此处必在模板外
+        from pyshade.components.each import Each, loop_token_of
+
+        child_token = loop_token_of(cast('Each', node.component))
     for child in node.children:
-        _check_node(child, page_name, seen, state, parent_tag=node.tag)
+        _check_node(child, page_name, seen, state, parent_tag=node.tag, loop_token=child_token)
 
 
 def _check_naming(node: NodeIR, page_name: str) -> None:
@@ -200,6 +215,34 @@ def _check_component_rules(node: NodeIR) -> None:
         _check_tooltip(node)
     elif node.tag in ('Dialog', 'AlertDialog'):
         _check_dialog(node)
+
+
+_TEMPLATE_WHITELIST = frozenset({'Text', 'Button', 'Card'})
+"""Each 模板允许的组件(M2):受控/敏感/浮层组件的 per-item 状态归 M3。"""
+
+
+def _check_template_node(node: NodeIR) -> None:
+    """G-E 规则:模板内组件白名单、嵌套 Each、submit 禁用、plain visible 必须为 True。"""
+    if node.tag == 'Each':
+        raise CompileError(f"{node.anchor}: Each 不支持嵌套(M3)→ 请把内层列表拍平或拆成独立区域")
+    if node.tag not in _TEMPLATE_WHITELIST:
+        allowed = '/'.join(sorted(_TEMPLATE_WHITELIST))
+        raise CompileError(
+            f"{node.anchor}: {node.tag} 不能出现在 Each 模板内(M2 白名单:{allowed})→ "
+            "per-item 受控状态与浮层归 M3,请简化模板或把交互移到列表外"
+        )
+    submit = next((p for p in node.props if p.name == 'submit'), None)
+    if submit is not None and submit.default_value is True:
+        raise CompileError(
+            f"{node.anchor}: Each 模板内不支持 submit=True(collectValues 是页面级快照,无 per-item 语义)→ "
+            "请改用普通事件 + ctx.item_index 定位数据"
+        )
+    visible = next((p for p in node.props if p.name == 'visible'), None)
+    if visible is not None and visible.binding == 'plain' and visible.default_value is not True:
+        raise CompileError(
+            f"{node.anchor}: 模板内 plain visible 是构建期常量,恒 False 无意义 → "
+            "显隐请绑定项字段表达式(如 visible=item.mine)或 ServerRef"
+        )
 
 
 def _check_navigation(node: NodeIR) -> None:
@@ -333,11 +376,19 @@ def _check_client_bind(node: NodeIR, prop: PropInfo, page_name: str, state: _Exp
     state.bind_sites.setdefault(id(val), []).append(_site(node, prop))
 
 
-def _check_expr_prop(node: NodeIR, prop: PropInfo, page_name: str, state: _ExprState) -> None:
+def _check_expr_prop(
+    node: NodeIR, prop: PropInfo, page_name: str, state: _ExprState, *, loop_token: object | None
+) -> None:
     expr = cast('Expr[Any]', prop.default_value)
     _check_type_match(node, prop, expr)
     for leaf in expr.refs():
-        if isinstance(leaf, ClientVal):
+        if isinstance(leaf, ItemRef):
+            if leaf.loop_token is not loop_token:
+                raise CompileError(
+                    f"{_site(node, prop)}: 项字段引用逃逸出其 Each 模板 → "
+                    "ItemRef 只在所属 Each 的 render 模板内有意义,请勿存储代理属性供模板外使用"
+                )
+        elif isinstance(leaf, ClientVal):
             _check_owned_by_page(node, prop, leaf, page_name)
             state.ref_sites.setdefault(id(leaf), _site(node, prop))
         else:
