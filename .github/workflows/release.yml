@@ -53,7 +53,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
-      PYSHADE_CACHE_DIR: ${{ runner.temp }}/pyshade-cache
+      PYSHADE_CACHE_DIR: ${{ github.workspace }}/.pyshade-cache
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -89,7 +89,7 @@ jobs:
           workspaces: examples/task_board/src-tauri
       - uses: actions/cache@v4
         with:
-          path: ${{ runner.temp }}/pyshade-cache/cpython
+          path: .pyshade-cache/cpython
           key: cpython-${{ runner.os }}-${{ hashFiles('src/pyshade/packager/_cpython.py') }}
       - name: Package
         shell: bash
