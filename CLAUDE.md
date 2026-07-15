@@ -33,7 +33,10 @@ M1(表达式系统与编译期校验)、M2(组件铺量/零 Node 打包/路由/E
   `each.py` 的 render-prop 模板)、`page.py`(布局 + ClientVal 收集 + `$t` 模板 anchor)、
   `events.py`(Update 所有权拒绝 + item_index)、`compiler/`(ir 的 binding 四分类 → emit_page →
   checks 的 G 规则 + check_app)、`push.py`(PatchBus + SSE)、`asgi/`(IPC 适配)、
-  `bundler/`(零 Node 管线:esbuild/staging/entry/assets)、`testing/`(真机 E2E harness)、`cli.py`
+  `bundler/`(零 Node 管线:esbuild/staging/entry/assets)、`packager/`(standalone 安装包:
+  _cpython 获取链/_scaffold 模板/_platform 修补/_pyembed 装配/_tauri_cli,§3.12)、
+  `shell.py`(运行时壳层 shim,standalone/wheel 双形态)、`testing/`(真机 E2E harness)、
+  `cli.py`(build/bundle/init/package)
 - 前端 runtime 边界:`patches.ts`(mergePatches + `$nav` 保留地址)、`store.ts`(App 级共享 store
   context)、`app.tsx`(ShadeAppProvider/ShadeRouter,push 订阅提升 App 层)、`page.ts`
   (usePageRuntime 双模式:有 Provider 走共享 store,无则页面本地)

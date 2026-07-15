@@ -221,6 +221,57 @@ jobs:
           name: native-bundle-report
           path: reports/
 
+  # standalone 打包冒烟:Rust 编译 + nsis 出包 + 裸 exe PYSHADE_SMOKE(链路不烂的日常保险)
+  package-smoke:
+    runs-on: windows-latest
+    needs: wheel-assets
+    timeout-minutes: 40
+    env:
+      PYSHADE_CACHE_DIR: ${{ runner.temp }}/pyshade-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: tauri-cli@2
+      - uses: actions/download-artifact@v4
+        with:
+          name: pyshade-wheel
+          path: wheel-dist
+      - name: Install wheel into clean venv
+        shell: bash
+        run: |
+          uv venv .venv-pkg --python 3.13
+          uv pip install --python .venv-pkg wheel-dist/pyshade-*.whl
+      - name: Scaffold packaging project
+        shell: bash
+        run: .venv-pkg/Scripts/pyshade init --dir examples/task_board
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: examples/task_board/src-tauri
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pyshade-cache/cpython
+          key: cpython-${{ runner.os }}-${{ hashFiles('src/pyshade/packager/_cpython.py') }}
+      - name: Package (nsis only)
+        shell: bash
+        run: |
+          .venv-pkg/Scripts/pyshade package task_board.app:app --dir examples/task_board \
+            --with wheel-dist/pyshade-*.whl --bundles nsis --out dist-package
+      - name: Assert installer exists
+        shell: bash
+        run: ls dist-package/*-setup.exe
+      - name: Smoke run bare binary
+        shell: bash
+        env:
+          PYSHADE_SMOKE: '1'
+          WEBVIEW2_USER_DATA_FOLDER: ${{ runner.temp }}/wv2-package
+        run: examples/task_board/src-tauri/target/bundle-release/task-board.exe
+
   e2e-native:
     runs-on: windows-latest
     timeout-minutes: 20

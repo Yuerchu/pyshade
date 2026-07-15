@@ -215,6 +215,34 @@ M2 落地形态(组件铺量期的所有权决策):
 - **页面状态 unmount 即丢(定案)**:ClientVal/受控输入随页面卸载重置,跨页存活的归宿是 ServerState;
   keep-alive 与深链归 M3。页面类名是 anchor/handlerId/路由的共同命名空间,重复即 CompileError。
 
+### 3.12 打包分发链(M3 已实现,`pyshade init` + `pyshade package`)
+
+pytauri-wheel 只能跑不能分发(venv 依赖),安装包必走 full pytauri + Rust;PyShade 把官方
+五步收编成两条命令,打包机 = Python + Rust,**零 Node**(tauri-cli 走 `cargo install`,
+beforeBuildCommand 留空,frontendDist 用 `pyshade bundle` 产物)。
+
+- **frontendDist 烤入二进制**(定案):standalone 的 `context_factory` 忽略一切运行时参数
+  (Rust 侧 `|_args,_kwargs| tauri_generate_context()`),运行时覆盖不可达;`pyshade package`
+  把 bundle 三件套拷进 `src-tauri/frontend`,经 `tauri.conf.json` 的 `"./frontend"` 编译期固化。
+- **双配置分工**:`src/<pkg>/Tauri.toml` 是 dev 态真相(pytauri-wheel 读),
+  `src-tauri/tauri.conf.json` 是打包真相(init 时从前者推断生成,package 体检比对漂移 warn);
+  `bundle.resources` 只写 `src-tauri/tauri.bundle.json`——写进 tauri.conf.json 会让
+  `tauri dev` 误链复制出的 Python 环境(pytauri 官方警告),配合独立 `bundle-release` profile 隔离。
+- **便携 CPython 单版本 pin**(python-build-standalone install_only_stripped):与打包机
+  Python 解耦,六平台 tarball sha256 表(`scripts/pin_cpython.py` 从官方 SHA256SUMS 生成),
+  用户缓存 + `.pyshade-stamp` 增量;镜像/离线/自选版本经 env 逃生。
+- **运行时 shim**(`pyshade.shell.run`):`sys._pytauri_standalone`(pytauri standalone 协议)
+  选择 factories 来源,双形态共用 EventRegistry → FastAPI → AsgiIpcAdapter 装配;
+  `PYSHADE_SMOKE=1` → Ready 即退出(CI 冒烟);`freeze_support` 防 spawn 循环。
+- **实测教训**:`tauri-plugin-pytauri` 必须是模板 Cargo.toml 的直接依赖(capability 权限经
+  cargo links metadata 只向直接依赖方暴露);运行期生成的 .pyc 不在 NSIS 装载清单内、卸载
+  残留 → package 前 compileall 预编译;pytauri-wheel 混进 pyembed 是 +30MB 纯冗余 →
+  examples 把它挪到 dev 依赖组,packager 检测并 warn。
+- Linux 默认只出 deb:AppImage 的 libpython 挪位(tauri#11898)未验证,rpath 已加
+  `$ORIGIN/../lib` 对冲,显式 `--bundles appimage` 可尝试。签名/公证 out of scope(§6)。
+- 实测(Windows):安装包 27.2MB(NSIS,per-user 安装到 `%LOCALAPPDATA%`),
+  首次全量编译 ~9min、增量 ~1min,pyembed 命中缓存的一键 package 83s。
+
 ## 4. 已知风险与预期管理
 
 - **包体**:去掉 Chromium 后瓶颈转移到 Python 运行时,PyInstaller/Nuitka 产物 30-50MB 起步。

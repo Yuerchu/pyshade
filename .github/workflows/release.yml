@@ -1,0 +1,140 @@
+name: Release
+
+# 三平台 standalone 安装包:tag 推送出正式产物(draft release),workflow_dispatch 用于链路演练
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  PYTHONUTF8: '1'
+
+jobs:
+  # 与主 CI 的 wheel-assets 同构:有 Node 的一侧把 wheel(含 _frontend 资产)造好
+  wheel-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: '3.13'
+      - run: uv sync --group dev
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm -C frontend install --frozen-lockfile
+      - run: pnpm -C frontend build:css
+      - name: Materialize vendor tree
+        run: uv run python scripts/build_vendor.py
+      - run: uv build --wheel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pyshade-wheel
+          path: dist/pyshade-*.whl
+
+  package:
+    needs: wheel-assets
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: nsis,msi
+          - os: macos-latest
+            bundles: dmg,app
+          - os: ubuntu-22.04
+            bundles: deb
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      PYSHADE_CACHE_DIR: ${{ runner.temp }}/pyshade-cache
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: tauri-cli@2
+      - name: Linux system deps (WebKitGTK)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev \
+            libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb
+      - uses: actions/download-artifact@v4
+        with:
+          name: pyshade-wheel
+          path: wheel-dist
+      - name: Install wheel into clean venv
+        shell: bash
+        run: |
+          uv venv .venv-pkg --python 3.13
+          uv pip install --python .venv-pkg wheel-dist/pyshade-*.whl
+      - name: Scaffold packaging project (模板即真相,现场生成)
+        shell: bash
+        run: |
+          VENV_BIN=$(ls -d .venv-pkg/Scripts 2>/dev/null || echo .venv-pkg/bin)
+          "$VENV_BIN/pyshade" init --dir examples/task_board
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: examples/task_board/src-tauri
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pyshade-cache/cpython
+          key: cpython-${{ runner.os }}-${{ hashFiles('src/pyshade/packager/_cpython.py') }}
+      - name: Package
+        shell: bash
+        run: |
+          VENV_BIN=$(ls -d .venv-pkg/Scripts 2>/dev/null || echo .venv-pkg/bin)
+          "$VENV_BIN/pyshade" package task_board.app:app --dir examples/task_board \
+            --with wheel-dist/pyshade-*.whl --bundles ${{ matrix.bundles }} --out dist-package
+      - name: Smoke run bare binary (PYSHADE_SMOKE=1)
+        shell: bash
+        env:
+          PYSHADE_SMOKE: '1'
+        run: |
+          BIN=examples/task_board/src-tauri/target/bundle-release/task-board
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            "$BIN.exe"
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a "$BIN"
+          else
+            "$BIN"
+          fi
+      - name: Report artifact sizes
+        shell: bash
+        run: ls -lhR dist-package | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: dist-package/
+
+  release:
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: installers-*
+          merge-multiple: true
+          path: dist-all
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: dist-all/**
+          body: |
+            未签名产物说明:
+            - macOS:首次打开需右键 → 打开,或 `xattr -d com.apple.quarantine <App>`
+            - Windows:SmartScreen 提示时选择"仍要运行"
