@@ -44,6 +44,95 @@ function textOf(container: HTMLElement, id: string): string | null {
   return container.querySelector(`#${id}`)?.textContent ?? null;
 }
 
+export async function suiteRoutingKeepAlive(): Promise<CaseResult> {
+  const result = makeCase("routing.keep_alive");
+  const container = document.createElement("div");
+  container.style.display = "none";
+  document.body.appendChild(container);
+  const root = createRoot(container);
+
+  try {
+    root.render(
+      <ShadeAppProvider initial="RouteHome">
+        <StoreProbe />
+        <ShadeRouter pages={{ RouteHome, RouteDetail }} keepAlive />
+      </ShadeAppProvider>,
+    );
+    await flush();
+    container.querySelector<HTMLButtonElement>("#pyshade-routing-inc")?.click();
+    container.querySelector<HTMLButtonElement>("#pyshade-routing-inc")?.click();
+    await flush();
+    check(result, "counted_before_leave", textOf(container, "pyshade-routing-count") === "2");
+
+    // 切页:home 保持挂载但被 display:none 包裹
+    store?.navigate("RouteDetail");
+    await flush();
+    const counter = container.querySelector<HTMLElement>("#pyshade-routing-count");
+    check(result, "home_kept_in_dom", counter !== null);
+    const wrapper = counter?.parentElement?.parentElement;
+    check(result, "home_hidden", wrapper?.style.display === "none", wrapper?.style.display ?? "(无包裹)");
+    check(result, "detail_mounted", container.querySelector("#pyshade-routing-detail") !== null);
+
+    // 切回:ClientVal 语义的本地状态存活(与默认模式的 client_state_reset 相反)
+    store?.navigate("RouteHome");
+    await flush();
+    check(result, "client_state_survives", textOf(container, "pyshade-routing-count") === "2");
+    const wrapperBack = container.querySelector<HTMLElement>("#pyshade-routing-count")?.parentElement?.parentElement;
+    check(result, "home_visible_again", wrapperBack?.style.display !== "none");
+  } finally {
+    root.unmount();
+    container.remove();
+    store = null;
+  }
+  return result;
+}
+
+export async function suiteRoutingDeepLink(): Promise<CaseResult> {
+  const result = makeCase("routing.deep_link");
+  const container = document.createElement("div");
+  container.style.display = "none";
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const originalHash = location.hash;
+
+  try {
+    // 预置 hash → deepLink 挂载 → 初始页被 hash 覆盖
+    location.hash = "#/RouteDetail";
+    await flush();
+    root.render(
+      <ShadeAppProvider initial="RouteHome" pageNames={["RouteHome", "RouteDetail"]} deepLink>
+        <StoreProbe />
+        <ShadeRouter pages={{ RouteHome, RouteDetail }} />
+      </ShadeAppProvider>,
+    );
+    await flush();
+    check(result, "initial_from_hash", container.querySelector("#pyshade-routing-detail") !== null);
+
+    // navigate → hash 同步(历史条目)
+    store?.navigate("RouteHome");
+    await flush();
+    check(result, "hash_follows_navigate", location.hash === "#/RouteHome", location.hash);
+
+    // 手改 hash → hashchange 反向驱动切页
+    location.hash = "#/RouteDetail";
+    await flush();
+    check(result, "hashchange_drives_navigation", container.querySelector("#pyshade-routing-detail") !== null);
+
+    // 无效 hash:warn + 页面不动 + 不回写规范 hash
+    location.hash = "#/NoSuchPage";
+    await flush();
+    check(result, "invalid_hash_ignored", container.querySelector("#pyshade-routing-detail") !== null);
+    check(result, "invalid_hash_not_rewritten", location.hash === "#/NoSuchPage", location.hash);
+  } finally {
+    root.unmount();
+    container.remove();
+    store = null;
+    location.hash = originalHash;
+    await flush();
+  }
+  return result;
+}
+
 export async function suiteRouting(): Promise<CaseResult> {
   const result = makeCase("routing.state");
   const container = document.createElement("div");

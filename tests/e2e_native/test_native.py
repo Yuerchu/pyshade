@@ -55,5 +55,17 @@ def test_routing_state(native_report: TestReport) -> None:
     assert case.status == 'pass', case.model_dump()
 
 
+def test_routing_keep_alive(native_report: TestReport) -> None:
+    """M3 keep-alive:访问过的页面保持挂载(display:none),本地状态跨切页存活。"""
+    case = _case(native_report, 'routing.keep_alive')
+    assert case.status == 'pass', case.model_dump()
+
+
+def test_routing_deep_link(native_report: TestReport) -> None:
+    """M3 深链:hash 覆盖初始页、navigate 写 hash、hashchange 反向驱动、无效 hash 忽略。"""
+    case = _case(native_report, 'routing.deep_link')
+    assert case.status == 'pass', case.model_dump()
+
+
 def test_overall_verdict(native_report: TestReport) -> None:
     assert native_report.ok, native_report.to_markdown()

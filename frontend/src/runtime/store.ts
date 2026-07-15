@@ -13,6 +13,8 @@ export interface ShadeRuntimeStore {
   applyPatches: (patches: Patch[]) => void;
   navigate: (page: string) => void;
   currentPage: string;
+  /** 访问过的页面(去重,访问序);Router keepAlive 据此保持挂载。 */
+  visitedPages: string[];
 }
 
 /** 无 Provider(单页挂载/单测)时为 null,usePageRuntime 回落页面本地 store。 */

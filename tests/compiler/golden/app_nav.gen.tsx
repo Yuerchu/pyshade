@@ -15,7 +15,7 @@ const BOUND_PROPS = [
 
 export default function App() {
   return (
-    <ShadeAppProvider initial="NavHomePage" boundProps={BOUND_PROPS} push>
+    <ShadeAppProvider initial="NavHomePage" boundProps={BOUND_PROPS} push pageNames={Object.keys(PAGES)} deepLink>
       <ShadeRouter pages={PAGES} />
     </ShadeAppProvider>
   );

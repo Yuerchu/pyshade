@@ -17,9 +17,12 @@ class ShadeApp:
         title: str = 'PyShade App',
         pages: list[type[Page]],
         extra_components: list[type[Component]] | None = None,
+        keep_alive: bool = False,
     ) -> None:
         if not pages:
             raise ValueError("ShadeApp 至少需要一个页面")
         self.title = title
         self.pages = pages
         self.extra_components: list[type[Component]] = list(extra_components or [])
+        self.keep_alive = keep_alive
+        """True → 访问过的页面保持挂载(display:none),ClientVal/受控输入跨切页存活(§3.11)。"""

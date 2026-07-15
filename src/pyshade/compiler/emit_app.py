@@ -11,8 +11,12 @@ from pyshade.compiler.ir import NodeIR, PageIR, iter_node_irs
 from pyshade.compiler.writer import TsxWriter, js_string
 
 
-def emit_app(pages: list[PageIR]) -> str:
-    """生成 app.gen.tsx:ShadeAppProvider(共享 store)+ ShadeRouter(页面表)。"""
+def emit_app(pages: list[PageIR], *, keep_alive: bool = False) -> str:
+    """生成 app.gen.tsx:ShadeAppProvider(共享 store)+ ShadeRouter(页面表)。
+
+    生成的 App 恒开深链(pageNames + deepLink);runtime 侧默认关闭是给
+    testkit/手工挂载留的不串扰余地。keep_alive 经 Router 的 keepAlive prop 落地。
+    """
     if not pages:
         raise ValueError("emit_app 至少需要一个页面")
 
@@ -53,9 +57,12 @@ def emit_app(pages: list[PageIR]) -> str:
         attrs.append('boundProps={BOUND_PROPS}')
     if push_any:
         attrs.append('push')
+    attrs.append('pageNames={Object.keys(PAGES)}')
+    attrs.append('deepLink')
+    router_attrs = ' keepAlive' if keep_alive else ''
     w.line(f'<ShadeAppProvider {" ".join(attrs)}>')
     w.indent()
-    w.line('<ShadeRouter pages={PAGES} />')
+    w.line(f'<ShadeRouter pages={{PAGES}}{router_attrs} />')
     w.dedent()
     w.line('</ShadeAppProvider>')
     w.dedent()

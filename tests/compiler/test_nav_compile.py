@@ -67,8 +67,23 @@ class TestNavGolden:
         # boundProps 全页聚合;DetailPage 的 ServerRef 让 App 级 push 开启
         assert '"NavHomePage.density.checked",' in tsx
         assert '"NavHomePage.hint.visible",' in tsx
-        assert 'boundProps={BOUND_PROPS} push>' in tsx
+        assert 'boundProps={BOUND_PROPS} push pageNames={Object.keys(PAGES)} deepLink>' in tsx
         golden_compare('app_nav.gen.tsx', tsx)
+
+    def test_deep_link_attrs_always_emitted(self) -> None:
+        tsx = emit_app(_page_irs())
+        assert 'pageNames={Object.keys(PAGES)} deepLink' in tsx
+        assert 'keepAlive' not in tsx  # 默认不保活
+
+    def test_keep_alive_router_prop(self) -> None:
+        tsx = emit_app(_page_irs(), keep_alive=True)
+        assert '<ShadeRouter pages={PAGES} keepAlive />' in tsx
+
+    def test_shade_app_keep_alive_param(self) -> None:
+        from pyshade.app import ShadeApp
+
+        assert ShadeApp(pages=[NavHomePage]).keep_alive is False
+        assert ShadeApp(pages=[NavHomePage], keep_alive=True).keep_alive is True
 
     def test_manifest_routes(self) -> None:
         data = json.loads(emit_manifest(_page_irs()))
