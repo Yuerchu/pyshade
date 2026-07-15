@@ -13,8 +13,7 @@ from typing import Any, cast
 
 from pyshade.compiler.errors import CompileError
 from pyshade.compiler.ir import NodeIR, PageIR, PropInfo, iter_node_irs
-from pyshade.compiler.writer import TsxWriter, js_bool, js_string, js_value
-from pyshade.components.switch import Switch
+from pyshade.compiler.writer import TsxWriter, js_string, js_value
 from pyshade.expr import ClientVal, Expr, ExprType, PropRef
 from pyshade.page import anchor_of
 from pyshade.state import ServerRef
@@ -31,15 +30,24 @@ _TS_TYPE: dict[ExprType, str] = {
 }
 
 SHADCN_MODULES: dict[str, str] = {
+    'Alert': '"@/components/ui/alert"',
+    'AlertDescription': '"@/components/ui/alert"',
+    'AlertTitle': '"@/components/ui/alert"',
+    'Badge': '"@/components/ui/badge"',
     'Button': '"@/components/ui/button"',
     'Card': '"@/components/ui/card"',
     'CardContent': '"@/components/ui/card"',
     'CardDescription': '"@/components/ui/card"',
     'CardHeader': '"@/components/ui/card"',
     'CardTitle': '"@/components/ui/card"',
+    'Checkbox': '"@/components/ui/checkbox"',
     'Input': '"@/components/ui/input"',
     'Label': '"@/components/ui/label"',
+    'Progress': '"@/components/ui/progress"',
+    'Separator': '"@/components/ui/separator"',
+    'Skeleton': '"@/components/ui/skeleton"',
     'Switch': '"@/components/ui/switch"',
+    'Textarea': '"@/components/ui/textarea"',
 }
 """shadcn 元件名 → import 模块;emit 与 bundler(extra_components 逃生舱)共用。"""
 
@@ -93,6 +101,30 @@ class _PageEmitContext:
 
 def _var_name(anchor: str) -> str:
     return anchor.split('.')[-1].replace('[', '_').replace(']', '')
+
+
+def _controlled_default(node: NodeIR) -> object:
+    """受控组件 useState 的初始值:受控 prop 的 plain 默认值(client_bind 已走 alias 分支)。"""
+    from pyshade.components.base import ControlledMixin, controlled_prop_of
+
+    component = node.component
+    assert isinstance(component, ControlledMixin), f'{node.anchor} 不是受控组件'
+    prop_name = controlled_prop_of(component)
+    prop = next(p for p in node.props if p.name == prop_name)
+    return prop.default_value
+
+
+def _scalar_expr_type(value: object) -> ExprType:
+    """受控默认值 → ExprType(bool 先于 int 判定)。"""
+    if isinstance(value, bool):
+        return ExprType.BOOL
+    if isinstance(value, int):
+        return ExprType.INT
+    if isinstance(value, float):
+        return ExprType.FLOAT
+    if isinstance(value, str):
+        return ExprType.STR
+    raise CompileError(f"受控 prop 默认值必须是标量,收到 {type(value).__name__}")
 
 
 def _opt_prop(node: NodeIR, name: str) -> PropInfo | None:
@@ -351,6 +383,148 @@ def emit_card(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     _close_visible_guard(guarded, w)
 
 
+@register('Badge')
+def emit_badge(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    ctx.imports.add('Badge')
+    guarded = _emit_visible_guard(node, w, ctx)
+    variant = next((p for p in node.props if p.name == 'variant'), None)
+    text = next((p for p in node.props if p.name == 'text'), None)
+    attrs = f' variant={{{ctx.prop_js(node, variant)}}}' if variant else ''
+    text_js = ctx.prop_js(node, text) if text else js_string('')
+    w.line(f'<Badge{attrs}>{{{text_js}}}</Badge>')
+    _close_visible_guard(guarded, w)
+
+
+@register('Alert')
+def emit_alert(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    ctx.imports.add('Alert')
+    ctx.imports.add('AlertTitle')
+    guarded = _emit_visible_guard(node, w, ctx)
+    variant = next((p for p in node.props if p.name == 'variant'), None)
+    title = next((p for p in node.props if p.name == 'title'), None)
+    description = _opt_prop(node, 'description')
+
+    attrs = f' variant={{{ctx.prop_js(node, variant)}}}' if variant else ''
+    w.line(f'<Alert{attrs}>')
+    w.indent()
+    title_js = ctx.prop_js(node, title) if title else js_string('')
+    w.line(f'<AlertTitle>{{{title_js}}}</AlertTitle>')
+    if description:
+        ctx.imports.add('AlertDescription')
+        w.line(f'<AlertDescription>{{{ctx.prop_js(node, description)}}}</AlertDescription>')
+    w.dedent()
+    w.line('</Alert>')
+    _close_visible_guard(guarded, w)
+
+
+@register('Separator')
+def emit_separator(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    ctx.imports.add('Separator')
+    guarded = _emit_visible_guard(node, w, ctx)
+    orientation = next((p for p in node.props if p.name == 'orientation'), None)
+    attrs = f' orientation={{{ctx.prop_js(node, orientation)}}}' if orientation else ''
+    w.line(f'<Separator{attrs} />')
+    _close_visible_guard(guarded, w)
+
+
+@register('Skeleton')
+def emit_skeleton(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    ctx.imports.add('Skeleton')
+    guarded = _emit_visible_guard(node, w, ctx)
+    width = _opt_prop(node, 'width')
+    height = _opt_prop(node, 'height')
+    if width or height:
+        parts: list[str] = []
+        if width:
+            parts.append(f'width: {js_string(str(width.default_value))}')
+        if height:
+            parts.append(f'height: {js_string(str(height.default_value))}')
+        w.line(f'<Skeleton style={{{{ {", ".join(parts)} }}}} />')
+    else:
+        w.line('<Skeleton className="h-4 w-full" />')
+    _close_visible_guard(guarded, w)
+
+
+@register('Progress')
+def emit_progress(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    ctx.imports.add('Progress')
+    guarded = _emit_visible_guard(node, w, ctx)
+    value = next((p for p in node.props if p.name == 'value'), None)
+    value_js = ctx.prop_js(node, value) if value else '0'
+    w.line(f'<Progress value={{{value_js}}} />')
+    _close_visible_guard(guarded, w)
+
+
+@register('Textarea')
+def emit_textarea(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    ctx.imports.add('Textarea')
+    ctx.imports.add('Label')
+    ctx.add_controlled(node)
+    var = ctx.value_var(node)
+    setter = ctx.setter(node)
+    guarded = _emit_visible_guard(node, w, ctx)
+
+    label = _opt_prop(node, 'label')
+    placeholder = _opt_prop(node, 'placeholder')
+    rows = next((p for p in node.props if p.name == 'rows'), None)
+    disabled = next((p for p in node.props if p.name == 'disabled'), None)
+    change_event = next((e for e in node.events if e.kind == 'change'), None)
+
+    w.line('<div className="grid gap-2">')
+    w.indent()
+    if label:
+        w.line(f'<Label htmlFor={js_string(node.anchor)}>{{{ctx.prop_js(node, label)}}}</Label>')
+    attrs: list[str] = [f'id={js_string(node.anchor)}']
+    if placeholder:
+        attrs.append(f'placeholder={{{ctx.prop_js(node, placeholder)}}}')
+    if rows:
+        attrs.append(f'rows={{{ctx.prop_js(node, rows)}}}')
+    if disabled:
+        attrs.append(f'disabled={{{ctx.prop_js(node, disabled)}}}')
+    attrs.append(f'value={{{var}}}')
+    attrs.append(f'onChange={{(e) => {setter}(e.target.value)}}')
+    if change_event:
+        attrs.append(f'onBlur={{() => rt.fire({js_string(change_event.handler_id)}, {{ value: {var} }})}}')
+    w.line(f'<Textarea {" ".join(attrs)} />')
+    w.dedent()
+    w.line('</div>')
+    _close_visible_guard(guarded, w)
+
+
+@register('Checkbox')
+def emit_checkbox(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    ctx.imports.add('Checkbox')
+    ctx.imports.add('Label')
+    ctx.add_controlled(node)
+    var = ctx.value_var(node)
+    setter = ctx.setter(node)
+    guarded = _emit_visible_guard(node, w, ctx)
+
+    label = _opt_prop(node, 'label')
+    disabled = next((p for p in node.props if p.name == 'disabled'), None)
+    change_event = next((e for e in node.events if e.kind == 'change'), None)
+
+    w.line('<div className="flex items-center gap-2">')
+    w.indent()
+    attrs: list[str] = [
+        f'id={js_string(node.anchor)}',
+        f'checked={{{var}}}',
+    ]
+    if disabled:
+        attrs.append(f'disabled={{{ctx.prop_js(node, disabled)}}}')
+    # radix indeterminate 三态按 checked === true 归一化(M2 不支持三态)
+    change_parts: list[str] = [f'{setter}(checked === true)']
+    if change_event:
+        change_parts.append(f'rt.fire({js_string(change_event.handler_id)}, {{ value: checked === true }})')
+    attrs.append(f'onCheckedChange={{(checked) => {{ {"; ".join(change_parts)} }}}}')
+    w.line(f'<Checkbox {" ".join(attrs)} />')
+    if label:
+        w.line(f'<Label htmlFor={js_string(node.anchor)}>{{{ctx.prop_js(node, label)}}}</Label>')
+    w.dedent()
+    w.line('</div>')
+    _close_visible_guard(guarded, w)
+
+
 def emit_node(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     emitter = EMITTERS.get(node.tag)
     if emitter is None:
@@ -410,15 +584,9 @@ def emit_page(page_ir: PageIR) -> str:
         if node.anchor in ctx.alias:
             continue  # client_bind:与 ClientVal 共用 useState
         var = _var_name(node.anchor)
-        is_switch = isinstance(node.component, Switch)
-        if is_switch:
-            checked = next((p for p in node.props if p.name == 'checked'), None)
-            default_val = js_bool(bool(checked.default_value) if checked else False)
-            w.line(f'const [{var}Value, set{var.capitalize()}Value] = useState<boolean>({default_val});')
-        else:
-            value = next((p for p in node.props if p.name == 'value'), None)
-            default_val = js_string(str(value.default_value) if value else '')
-            w.line(f'const [{var}Value, set{var.capitalize()}Value] = useState<string>({default_val});')
+        default_value = _controlled_default(node)
+        ts_type = _TS_TYPE[_scalar_expr_type(default_value)]
+        w.line(f'const [{var}Value, set{var.capitalize()}Value] = useState<{ts_type}>({js_value(default_value)});')
 
     for node in ctx.sensitive_inputs:
         var = _var_name(node.anchor)
@@ -431,8 +599,14 @@ def emit_page(page_ir: PageIR) -> str:
         sensitive_entries = [
             f'{_var_name(n.anchor)}: {_var_name(n.anchor)}Ref.current?.value ?? ""' for n in ctx.sensitive_inputs
         ]
+        numeric = (ExprType.INT, ExprType.FLOAT)
+        has_numeric_client_val = any(val.type in numeric for _name, val in ctx.client_vals)
+        has_numeric_controlled = any(
+            node.anchor not in ctx.alias and _scalar_expr_type(_controlled_default(node)) in numeric
+            for node in ctx.controlled_inputs
+        )
         value_union = 'string | boolean'
-        if any(val.type in (ExprType.INT, ExprType.FLOAT) for _name, val in ctx.client_vals):
+        if has_numeric_client_val or has_numeric_controlled:
             value_union += ' | number'
         # 无敏感输入时参数未使用,下划线前缀豁免 noUnusedParameters
         param = 'includeSensitive' if sensitive_entries else '_includeSensitive'

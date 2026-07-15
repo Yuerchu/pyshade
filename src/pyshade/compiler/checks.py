@@ -90,6 +90,7 @@ def _check_node(node: NodeIR, page_name: str, seen: set[str], state: _ExprState)
     _check_naming(node, page_name)
     _check_sensitive(node)
     _check_event_handlers(node)
+    _check_component_rules(node)
     for prop in node.props:
         if prop.binding == 'client_bind':
             _check_client_bind(node, prop, page_name, state)
@@ -128,19 +129,42 @@ def _check_event_handlers(node: NodeIR) -> None:
             raise CompileError(str(exc)) from exc
 
 
-def _expected_expr_type(component: Component, prop: str) -> ExprType | None:
-    """从 prop 注解(`T | Expr[T]` union)提取裸标量类型;取 union 首个标量成员。"""
+_NUMERIC_TYPES = frozenset({ExprType.INT, ExprType.FLOAT})
+
+_SCALAR_BY_PY_TYPE: dict[object, ExprType] = {
+    bool: ExprType.BOOL,
+    str: ExprType.STR,
+    int: ExprType.INT,
+    float: ExprType.FLOAT,
+}
+
+
+def _check_component_rules(node: NodeIR) -> None:
+    """组件特有规则(按 tag 分发)。"""
+    if node.tag == 'Progress':
+        value = next((p for p in node.props if p.name == 'value'), None)
+        if value is not None and value.binding == 'plain':
+            v = value.default_value
+            if isinstance(v, (int, float)) and not 0 <= v <= 100:
+                raise CompileError(f"{_site(node, value)}: Progress 取值 {v} 越界 → 取值范围 0-100")
+
+
+def _expected_expr_types(component: Component, prop: str) -> set[ExprType]:
+    """从 prop 注解(`T | Expr[T]` union)提取全部裸标量成员。"""
     annotation: object = type(component).model_fields[prop].annotation
+    out: set[ExprType] = set()
     for arg in get_args(annotation) or (annotation,):
-        if arg is bool:
-            return ExprType.BOOL
-        if arg is str:
-            return ExprType.STR
-        if arg is int:
-            return ExprType.INT
-        if arg is float:
-            return ExprType.FLOAT
-    return None
+        scalar = _SCALAR_BY_PY_TYPE.get(arg)
+        if scalar is not None:
+            out.add(scalar)
+    return out
+
+
+def _type_compatible(actual: ExprType, expected: set[ExprType]) -> bool:
+    """INT/FLOAT 同类别互通,与 expr._same_category 语义对齐(数值组件正常绑定)。"""
+    if actual in expected:
+        return True
+    return actual in _NUMERIC_TYPES and bool(expected & _NUMERIC_TYPES)
 
 
 def _site(node: NodeIR, prop: PropInfo) -> str:
@@ -148,11 +172,12 @@ def _site(node: NodeIR, prop: PropInfo) -> str:
 
 
 def _check_type_match(node: NodeIR, prop: PropInfo, expr: 'Expr[Any]') -> None:
-    expected = _expected_expr_type(node.component, prop.name)
-    if expected is not None and expr.type is not expected:
+    expected = _expected_expr_types(node.component, prop.name)
+    if expected and not _type_compatible(expr.type, expected):
+        expected_names = '/'.join(sorted(t.value for t in expected))
         raise CompileError(
-            f"{_site(node, prop)}: 表达式类型 {expr.type.value} 与 prop 类型 {expected.value} 不匹配 → "
-            f"请让表达式产出 {expected.value}(比较/逻辑组合产出 bool,`+` 拼接产出 str)"
+            f"{_site(node, prop)}: 表达式类型 {expr.type.value} 与 prop 类型 {expected_names} 不匹配 → "
+            f"请让表达式产出 {expected_names}(比较/逻辑组合产出 bool,`+` 拼接产出 str)"
         )
 
 
@@ -193,13 +218,14 @@ def _check_server_ref(node: NodeIR, prop: PropInfo) -> None:
             f"{_site(node, prop)}: {ref.state_class.__name__} 没有字段 '{ref.field}' → "
             "ServerRef 请通过类访问获得(如 ChatState.status),不要手工构造"
         )
-    expected = _expected_expr_type(node.component, prop.name)
+    expected = _expected_expr_types(node.component, prop.name)
     actual = _scalar_type_of(ref.default)
-    if expected is not None and actual is not expected:
+    if expected and (actual is None or not _type_compatible(actual, expected)):
         actual_name = actual.value if actual is not None else type(ref.default).__name__
+        expected_names = '/'.join(sorted(t.value for t in expected))
         raise CompileError(
             f"{_site(node, prop)}: ServerState 字段 {ref.target}.{ref.field} 的类型 {actual_name} "
-            f"与 prop 类型 {expected.value} 不匹配 → 请调整字段类型或换一个 prop"
+            f"与 prop 类型 {expected_names} 不匹配 → 请调整字段类型或换一个 prop"
         )
 
 

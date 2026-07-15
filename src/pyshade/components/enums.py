@@ -21,3 +21,27 @@ class ButtonSize(str, Enum):
     SM = 'sm'
     LG = 'lg'
     ICON = 'icon'
+
+
+class BadgeVariant(str, Enum):
+    DEFAULT = 'default'
+    SECONDARY = 'secondary'
+    DESTRUCTIVE = 'destructive'
+    OUTLINE = 'outline'
+
+
+class AlertVariant(str, Enum):
+    DEFAULT = 'default'
+    DESTRUCTIVE = 'destructive'
+
+
+class Orientation(str, Enum):
+    HORIZONTAL = 'horizontal'
+    VERTICAL = 'vertical'
+
+
+class TooltipSide(str, Enum):
+    TOP = 'top'
+    RIGHT = 'right'
+    BOTTOM = 'bottom'
+    LEFT = 'left'
