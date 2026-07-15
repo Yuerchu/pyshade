@@ -25,6 +25,7 @@ class TestInstallCommand:
             'pip',
             'install',
             '--exact',
+            '--no-sources',
             f'--python={python}',
             '--reinstall-package=task-board',
             str(project),

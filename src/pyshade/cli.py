@@ -134,6 +134,13 @@ def main() -> None:
     package_parser.add_argument('--python-version', default=None, help='便携 CPython 版本(缺省用 pin 值)')
     package_parser.add_argument('--pbs-release', default=None, help='python-build-standalone release 标签')
 
+    dev_parser = sub.add_parser('dev', help='开发模式:监听源码 → 重编译 → 浏览器自动刷新(HTTP,不开原生窗口)')
+    dev_parser.add_argument('app', help='模块路径:属性名(如 myapp.app:app)')
+    dev_parser.add_argument('--port', type=int, default=8765, help='dev server 端口')
+    dev_parser.add_argument('--open', action='store_true', help='启动后打开浏览器')
+    dev_parser.add_argument('--watch', action='append', default=[], metavar='PATH', help='追加监听目录')
+    dev_parser.add_argument('--workdir', default='.pyshade/dev', help='dev 工作目录')
+
     args = parser.parse_args()
     if args.command == 'package':
         from pyshade.packager import CPYTHON_VERSION, PBS_RELEASE
@@ -146,6 +153,18 @@ def main() -> None:
         _init(args)
     elif args.command == 'package':
         _package(args)
+    elif args.command == 'dev':
+        from pyshade.dev import run_dev
+
+        raise SystemExit(
+            run_dev(
+                args.app,
+                port=args.port,
+                open_browser=args.open,
+                watch=[Path(p) for p in args.watch],
+                workdir=Path(args.workdir),
+            )
+        )
     elif args.command == 'bundle':
         _bundle(args)
     elif args.command == 'bundle-testkit':

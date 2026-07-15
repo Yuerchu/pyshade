@@ -34,6 +34,8 @@ def install_command(
             'pip',
             'install',
             '--exact',
+            # 不读项目 [tool.uv.sources]:dev 态 path 源与 --with 的 wheel 会 URL 冲突(CI 实测)
+            '--no-sources',
             f'--python={pyembed_python}',
             f'--reinstall-package={dist_name}',
             str(project_dir),
