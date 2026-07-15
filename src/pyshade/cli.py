@@ -64,6 +64,31 @@ def _init(args: argparse.Namespace) -> None:
     print(f"src-tauri 就绪 → {result.src_tauri_dir}(新建 {len(result.created)},跳过 {len(result.skipped)})")
 
 
+def _package(args: argparse.Namespace) -> None:
+    from pyshade.packager import CpythonAcquireError, package_app
+    from pyshade.packager._pyembed import PyembedInstallError
+    from pyshade.packager._tauri_cli import TauriCliError
+
+    try:
+        result = package_app(
+            args.app,
+            Path(args.dir),
+            out_dir=Path(args.out),
+            bundles=tuple(args.bundles.split(',')) if args.bundles else None,
+            profile=args.profile,
+            extra_requirements=tuple(args.with_requirements),
+            package=args.package,
+            skip_bundle=args.skip_bundle,
+            fresh_pyembed=args.fresh_pyembed,
+            python_version=args.python_version,
+            pbs_release=args.pbs_release,
+        )
+    except (TauriCliError, CpythonAcquireError, PyembedInstallError) as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+    print(f"安装包就绪 → {Path(args.out).resolve()}({len(result.artifacts)} 个产物;裸可执行 {result.binary})")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog='pyshade', description='PyShade 构建工具')
     sub = parser.add_subparsers(dest='command')
@@ -89,11 +114,40 @@ def main() -> None:
     init_parser.add_argument('--identifier', default=None, help='应用标识(如 cn.example.myapp;缺省读 Tauri.toml)')
     init_parser.add_argument('--force', action='store_true', help='覆盖已存在的文件')
 
+    package_parser = sub.add_parser('package', help='standalone 打包:便携 CPython + cargo-tauri 出安装包')
+    package_parser.add_argument('app', help='模块路径:属性名(如 myapp.app:app)')
+    package_parser.add_argument('--dir', default='.', help='项目根(含 src-tauri/,先 pyshade init)')
+    package_parser.add_argument('--out', default='dist-package', help='安装包输出目录')
+    package_parser.add_argument(
+        '--bundles', default=None, help="逗号分隔的 bundle 类型(缺省按平台:nsis,msi / dmg,app / deb)"
+    )
+    package_parser.add_argument('--profile', default='bundle-release', choices=['bundle-release', 'bundle-dev'])
+    package_parser.add_argument(
+        '--with',
+        dest='with_requirements',
+        action='append',
+        default=[],
+        metavar='REQ',
+        help='追加 requirement(本地 wheel/目录)',
+    )
+    package_parser.add_argument('--package', default=None, help='src 布局下的包名(src/ 下多包时必填)')
+    package_parser.add_argument('--skip-bundle', action='store_true', help='跳过前端 bundle(已自备 src-tauri/frontend)')
+    package_parser.add_argument('--fresh-pyembed', action='store_true', help='强制重建内嵌解释器')
+    package_parser.add_argument('--python-version', default=None, help='便携 CPython 版本(缺省用 pin 值)')
+    package_parser.add_argument('--pbs-release', default=None, help='python-build-standalone release 标签')
+
     args = parser.parse_args()
+    if args.command == 'package':
+        from pyshade.packager import CPYTHON_VERSION, PBS_RELEASE
+
+        args.python_version = args.python_version or CPYTHON_VERSION
+        args.pbs_release = args.pbs_release or PBS_RELEASE
     if args.command == 'build':
         _build(args)
     elif args.command == 'init':
         _init(args)
+    elif args.command == 'package':
+        _package(args)
     elif args.command == 'bundle':
         _bundle(args)
     elif args.command == 'bundle-testkit':

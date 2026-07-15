@@ -63,12 +63,12 @@ _MANIFEST: list[tuple[str, str, bool]] = [
 ]
 
 
-def _load_toml(path: Path) -> dict[str, Any]:
+def load_toml(path: Path) -> dict[str, Any]:
     with path.open('rb') as fh:
         return tomllib.load(fh)
 
 
-def _detect_package(project_dir: Path, package: str | None) -> str:
+def detect_package(project_dir: Path, package: str | None) -> str:
     if package is not None:
         if not (project_dir / 'src' / package / '__init__.py').is_file():
             raise ScaffoldError(f"src/{package}/__init__.py 不存在;--package 需指向 src 布局下的包名")
@@ -82,12 +82,12 @@ def _detect_package(project_dir: Path, package: str | None) -> str:
     return candidates[0]
 
 
-def _read_pyproject(project_dir: Path) -> tuple[str, str]:
+def read_pyproject(project_dir: Path) -> tuple[str, str]:
     """返回 (发行名, 版本);缺文件/缺字段降级默认。"""
     pyproject = project_dir / 'pyproject.toml'
     if not pyproject.is_file():
         raise ScaffoldError(f"{project_dir} 下没有 pyproject.toml;pyshade init 需要在项目根运行(--dir 指定)")
-    data = _load_toml(pyproject)
+    data = load_toml(pyproject)
     project = cast('dict[str, Any]', data.get('project', {}))
     name = str(project.get('name', '')) or project_dir.name
     version = str(project.get('version', '')) or '0.1.0'
@@ -98,7 +98,7 @@ def _read_tauri_toml(config_path: Path) -> tuple[str | None, str | None, tuple[s
     """从用户 dev 态 Tauri.toml 取 (productName, identifier, 窗口);缺文件返回全 None。"""
     if not config_path.is_file():
         return None, None, None
-    data = _load_toml(config_path)
+    data = load_toml(config_path)
     product_name = cast('str | None', data.get('productName'))
     identifier = cast('str | None', data.get('identifier'))
     window: tuple[str, int, int] | None = None
@@ -121,8 +121,8 @@ def infer_params(
     product_name: str | None = None,
     identifier: str | None = None,
 ) -> InitParams:
-    pkg_name = _detect_package(project_dir, package)
-    dist_name, version = _read_pyproject(project_dir)
+    pkg_name = detect_package(project_dir, package)
+    dist_name, version = read_pyproject(project_dir)
     crate_name = dist_name.replace('_', '-')
     lib_name = f'{crate_name.replace("-", "_")}_lib'
 
