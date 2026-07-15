@@ -11,12 +11,6 @@ export function NavHomePage() {
   const rt = usePageRuntime({ boundProps: ["NavHomePage.density.checked", "NavHomePage.hint.visible"] });
 
   const [denseValue, setDenseValue] = useState<boolean>(false);
-
-  const collectValues = (_includeSensitive: boolean): Record<string, string | boolean> => ({
-    density: denseValue,
-    dense: denseValue,
-  });
-
   return (
     <main className="flex min-h-svh items-center justify-center p-6">
       {rt.ov("NavHomePage.card", "visible", true) && (

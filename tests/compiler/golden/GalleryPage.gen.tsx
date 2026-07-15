@@ -17,13 +17,6 @@ export function GalleryPage() {
 
   const [agreeValue, setAgreeValue] = useState<boolean>(false);
   const [noteValue, setNoteValue] = useState<string>("");
-
-  const collectValues = (_includeSensitive: boolean): Record<string, string | boolean> => ({
-    note: noteValue,
-    agree_box: agreeValue,
-    agree: agreeValue,
-  });
-
   return (
     <main className="flex min-h-svh items-center justify-center p-6">
       {rt.ov("GalleryPage.card", "visible", true) && (

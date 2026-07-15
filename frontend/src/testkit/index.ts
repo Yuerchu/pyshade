@@ -10,6 +10,7 @@ import { suiteHeaders } from "./suites/headers";
 import { suitePayload } from "./suites/payload";
 import { suiteRouting } from "./suites/routing";
 import { suiteRtt } from "./suites/rtt";
+import { suiteSpaEachClick, suiteSpaNavigate } from "./suites/spa";
 import { suiteStreaming } from "./suites/streaming";
 import { runCloseWindowScenario } from "./suites/closeWindow";
 import { suiteTyping } from "./suites/typing";
@@ -23,6 +24,8 @@ const BUILTIN_SUITES: [string, SuiteFn][] = [
   ["typing.latency", suiteTyping],
   ["rtt.bench_echo", suiteRtt],
   ["routing.state", suiteRouting],
+  ["spa.each_click", suiteSpaEachClick],
+  ["spa.navigate", suiteSpaNavigate],
 ];
 
 const extraSuites: [string, SuiteFn][] = [];

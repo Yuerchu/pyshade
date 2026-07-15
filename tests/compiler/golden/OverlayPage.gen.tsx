@@ -15,13 +15,6 @@ export function OverlayPage() {
 
   const [settings_openValue, setSettings_openValue] = useState<boolean>(false);
   const [edit_dialog_1Value, setEdit_dialog_1Value] = useState<string>("");
-
-  const collectValues = (_includeSensitive: boolean): Record<string, string | boolean> => ({
-    edit_dialog_1: edit_dialog_1Value,
-    settings_dialog: settings_openValue,
-    settings_open: settings_openValue,
-  });
-
   return (
     <main className="flex min-h-svh items-center justify-center p-6">
       {rt.ov("OverlayPage.card", "visible", true) && (

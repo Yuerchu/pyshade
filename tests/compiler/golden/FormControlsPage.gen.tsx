@@ -2,6 +2,7 @@
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -75,6 +76,11 @@ export function FormControlsPage() {
             )}
             {rt.ov("FormControlsPage.sync", "visible", true) && (
               <Progress value={rt.ov("$s:FormState", "sync_pct", 0)} />
+            )}
+            {rt.ov("FormControlsPage.save", "visible", true) && (
+              <Button variant={rt.ov("FormControlsPage.save", "variant", "default")} size={rt.ov("FormControlsPage.save", "size", "default")} disabled={rt.ov("FormControlsPage.save", "disabled", false)} onClick={() => rt.fire("FormControlsPage.save.on_click", { values: collectValues(true) })}>
+                {rt.ov("FormControlsPage.save", "text", "保存")}
+              </Button>
             )}
           </CardContent>
         </Card>

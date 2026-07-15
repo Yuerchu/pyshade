@@ -62,6 +62,7 @@ Reflex 的教训:编译只覆盖结构层,不自动决定逻辑归属。PyShade 
 | 普通 Python 值 | 服务端 | `rt.ov(anchor, prop, 默认)` | `Update` 可 patch |
 | `Expr[T]`(含 `ClientVal`) | 客户端 | 内联 JS,引用 useState 变量 | `Update` 构造期报错;前端 `boundProps` warn+丢弃 |
 | `ServerRef[T]`(ServerState 类字段) | 该字段 | `rt.ov("$s:类名", 字段, 默认)` | auto-diff/推送自动到达;`Update` 构造期报错 |
+| Each 模板内的普通值(M2) | 构建期常量 | 字面量(模板 anchor 跨 item 共享,无 per-item 语义) | `Update` 对 `.$t[` anchor 构造期报错 |
 
 M1 落地形态:
 
@@ -77,6 +78,17 @@ M1 落地形态:
   (后台任务——sink 带 closed 标志,spawn 任务继承的 contextvar 快照按已关闭处理)交给
   `PatchBus` → `GET /_shade/push` SSE。订阅先于快照、快照先于增量:merge 幂等,无需 patch 序号,
   重连即重收快照。SSE 跑在既有 ASGI 栈上,IPC 模式即一条常驻流式请求(Channel 帧),零新协议。
+
+M2 落地形态(组件铺量期的所有权决策):
+
+- **开合类 prop(Dialog/AlertDialog 的 `open`,Tabs 的 `value`)归客户端**:绑定 `ClientVal` 即受控
+  (radix 的 `onOpenChange` 回写 = 唯一写者);普通值只作 `defaultOpen` 初始语义;禁止 `ServerRef`
+  (双写者)。"服务端弹窗"记开放问题(§6)。
+- **`Each` 循环容器**:items 只接受 `ServerRef[list[标量或扁平模型]]`,render-prop 构造期执行恰一次收
+  类型化 `ItemProxy`(属性访问 → memoized `ItemRef` 叶子,按模型注解定型);模板 anchor 刻
+  `{容器}.$t[i]`,事件共享 handlerId、payload 自动携带 `item_index`/`item_key`。数据流是**整表替换**:
+  原地 `append` 不经过描述符赋值,惯用法 `chat.messages = [*chat.messages, msg]`;增量 splice、
+  ClientVal 列表、嵌套 Each、per-item 受控状态均归 M3。模板白名单 Text/Button/Card。
 
 ### 3.4 表达式系统:SQLAlchemy 模式
 
@@ -103,17 +115,37 @@ M1 落地形态:
 ### 3.5 组件层:Pydantic DTO
 
 - 为 shadcn 支持的元素抽公共基类,每个组件按其能力建子类继承。
-- props 校验由 Pydantic 白拿;组件嵌套合法性(如 `SelectItem` 只能在 `Select` 内)用类型系统或编译器规则表达。
+- props 校验由 Pydantic 白拿;组件嵌套合法性用编译器规则表达(M2 已落地:声明式嵌套表驱动——
+  `Tabs` 子组件必须全为 `TabItem`、`AccordionItem` 只能在 `Accordion` 内;`Dialog.trigger` 是
+  标量组件槽(asChild 包裹,不得绑 `on_click`);`Tooltip` 是 wrapper 容器(恰一个宿主,宿主
+  `visible` 保持默认);`Select`/`RadioGroup` 的选项走数据 prop(`list[Option]`,非组件树))。
 - 枚举取值用 `StrEnum` / `Literal["default", "destructive", ...]` 定义,编译期同步生成 TS union type,
-  两端共享单一 source of truth。shadcn 的 cva variant 系统本身就是枚举驱动,映射自然。
+  两端共享单一 source of truth(M2 起 Each 项模型同源生成 TS interface)。shadcn 的 cva variant
+  系统本身就是枚举驱动,映射自然。
 - 类型注解完备度同时服务 IDE 补全和 AI 编码助手——这是采纳率因素,不是锦上添花。
 
-### 3.6 按需打包
+### 3.6 按需打包与零 Node 管线(M2 已实现,`pyshade bundle`)
 
-- 静态分析用户代码的 import(`from pyshade.components import Button, Dialog`),生成只引用所需组件的
-  `entry.tsx`,交给 esbuild 构建出该应用专属的前端 bundle。未用到的组件不进包。
-- 构建工具只依赖 esbuild 单二进制(随 pip 包分发),不要求用户安装 Node。
-- 动态取组件(`getattr`、反射)会绕过静态收集,提供逃生舱:手动声明组件清单。
+组件收集**从编译期 IR 拿,不做用户代码 import 静态分析**(原方案已否决):IR 精确知道每页用了哪些
+组件,动态构造的组件树也被 IR 看到,"反射绕过收集"的问题面消失。按需由 import 图天然完成
+(esbuild treeshake),`entry.tsx` 从 IR 组件集合生成;真正的逃生舱只剩
+`ShadeApp(extra_components=[...])`(side-effect import 保住模块进图),`manifest.json` 记录组件清单。
+
+用户环境只有 Python + pip,零 Node 的四个支点:
+
+- **esbuild 官方二进制**:版本 pin + 每平台 sha256 表,首次使用从 npm registry 裸 HTTPS 下载 tarball
+  (`PYSHADE_NPM_REGISTRY` 可换源,国内 npmmirror;`PYSHADE_ESBUILD_PATH` 离线兜底),用户级缓存,
+  不随 wheel(保持 py3-none-any)。
+- **vendor 物化进 wheel**:发版脚本以 npm `--omit=dev --ignore-scripts --install-strategy=hoisted`
+  物化真实 `node_modules` 文件树(不做 ESM 预打包——radix 内部共享包会导致 React 双实例),
+  经 `NODE_PATH` 解析,与 pnpm-lock 版本强校验。react 双形态经
+  `--define:process.env.NODE_ENV` 死分支消除。
+- **CSS 发版时预编译**:仓库内 `@tailwindcss/cli` 产出单 style.css 进 wheel,用户不碰 Tailwind。
+  双层变量(`:root` 持值 + `@theme inline` 映射)保证预编译后运行时仍可换主题;`@source` 直接扫
+  emitter 的 .py 字符串(v4 扫描器语言无关),CI 以 `check_css_coverage` 断言 golden/ui 全部 class 命中。
+- **单一源码真相**:wheel 内 `pyshade/_frontend/` 由 hatch 构建钩子从 `frontend/` 注入
+  (fresh checkout 无产物时不注入,editable 安装回退仓库布局);CI `bundle-zero-node` job 在
+  剔除 node 的环境里以 wheel 安装打包并跑真机 E2E,与 vite 管线产物互为对照。
 
 ### 3.7 传输层:进程内 IPC,不走网络栈
 
@@ -134,6 +166,9 @@ M1 落地形态:
   URI scheme,后者 pytauri 未绑定);body 只接受 Raw bytes(前端负责 JSON→bytes,pytauri 前端 SDK
   本就如此)。
 - 开发模式可额外起真 HTTP server 便于调试;生产构建只留 IPC。两种模式跑同一个 ASGI app,行为一致。
+- **适配器 shutdown 取消 in-flight 请求**(M2 实测教训):开放式流(SSE 推送)的 bridge task 永不
+  自行结束,而 `start_blocking_portal` 正常退出会等全部 task 完成——不取消则关窗后进程挂死;
+  Channel 单向,JS 侧取消无法回传,唯一正确的终结点就是 adapter lifespan 退出。
 - FastAPI 是实现细节,对用户完全隐藏:不暴露 app 实例,docs/openapi 路由默认不存在
   (NiceGUI < v2.8.0 曾默认暴露 Swagger/OpenAPI,该 bug 由本项目作者修复,引以为鉴)。
 
@@ -166,6 +201,19 @@ M1 落地形态:
 - i18n 红利:结构化部分语言无关,只有描述文本需要翻译,维护量远小于全手写文档。
 - 编译器提供 desktop 和 web 两个 target,文档站用自家 web target 构建——dogfooding,
   每个组件的 live demo 同时是最大的集成测试。
+
+### 3.11 多页面路由(M2 定案)
+
+- **route 归客户端**:`navigate(Page 类或类名字符串)` 赋给事件 prop,编译为 `rt.navigate("页面名")`,
+  零 IPC、不进 EventRegistry;字符串目标是互相导航时前向引用的官方姿势,`check_app` 编译期校验
+  目标存在,不牺牲安全性。服务端导航是 handler 返回 `Navigate(...)`,编码为保留地址 `$nav` 的
+  patch(patch 协议的保留字,非新协议),与数据 patch 同 envelope 到达。
+- **App 级共享 store**:`app.gen.tsx` 只聚合参数与页面表(boundProps 全页聚合、push 任一页需要即开、
+  初始页 = `pages[0]`),骨架是手写 runtime(`ShadeAppProvider` + `ShadeRouter`)。overrides 提升
+  App 级——服务端 `Update` 不因切页蒸发;push 订阅提升 App 层——切页不断连、他页停留时后台推送不丢。
+  `usePageRuntime` 双模式:有 Provider 消费共享 store,无 Provider(单页挂载/单测)回落页面本地。
+- **页面状态 unmount 即丢(定案)**:ClientVal/受控输入随页面卸载重置,跨页存活的归宿是 ServerState;
+  keep-alive 与深链归 M3。页面类名是 anchor/handlerId/路由的共同命名空间,重复即 CompileError。
 
 ## 4. 已知风险与预期管理
 
@@ -213,8 +261,12 @@ M0 七项验证全部通过(隐藏窗口 `visible:false`,JS 正常执行,`docume
   `ClientState`/`ServerState`、SQLAlchemy 式表达式树、嵌套合法性/事件签名/死引用检查、`__bool__` 抛错;
   另交付 `pyshade.testing` 真机 E2E 框架 + GitHub Actions CI(§4 实测数字来源)。
   未进 M1(移交 M2+):`Each` 循环容器、受限闭包 handler、多页面路由。
-- **M2 — 组件铺量与按需打包**:
-  覆盖 shadcn 主要组件、静态 import 收集 + entry 生成 + esbuild 集成、动态引用逃生舱。
+- **M2 — 组件铺量与按需打包**(已完成,详见 §3.3/§3.5/§3.6/§3.11):
+  22 个组件(三波:复刻/选项与数值受控/容器浮层)、零 Node 打包管线(`pyshade bundle`,esbuild
+  二进制 + wheel 内 vendor + CSS 预编译)、多页面路由(`navigate`/`Navigate`/`$nav`)、`Each`
+  循环容器(整表替换 + item_index 事件)。examples:component_gallery(生成代码过真实 tsc)、
+  task_board(路由 + Each 真机 E2E)。未进 M2(移交 M3):受限闭包 handler、`--watch`、
+  theme 主题口子、Each 嵌套/增量/per-item 受控、keep-alive 与深链。
 - **M3 — 打包分发链**:
   python-build-standalone + Tauri bundler(pytauri 官方路径),三平台(Windows/macOS/Linux)
   安装包产出;处理 macOS rpath 修补与 Linux glibc 基线。
@@ -229,7 +281,10 @@ M0 是风险所在,M2 之后是体力活;先验证再铺量。
 - 热重载设计:编译路线下 dev 模式的增量编译与状态保持;pytauri standalone 模式下 Python 代码变更
   需重装的问题如何规避(dev 用 editable install)。
 - shadcn 上游同步策略:shadcn 组件源码更新后,PyShade 内置副本如何跟进。
-- Tailwind 主题暴露边界:只暴露 CSS 变量层(shadcn token),Python 用户不碰 Tailwind class——具体 API 待设计。
+- Tailwind 主题暴露边界:只暴露 CSS 变量层(shadcn token),Python 用户不碰 Tailwind class——具体 API
+  待设计(双层变量的运行时可覆盖性已在 §3.6 打底,`ShadeApp(theme=...)` 口子未做)。
+- 服务端弹窗:`open` 归客户端所有(§3.3),服务端想主动弹窗(全局错误/更新提示)缺正门,
+  语义与 `$nav` 类似的保留地址是候选。
 - web target 的优先级:仅服务文档站,还是作为正式发布特性。
 
 已关闭的问题(结论回填正文):pytauri 成熟度评估 → 3.9;Python 打包工具选型 → 不用

@@ -243,6 +243,9 @@ def main() -> None:
     parser.add_argument('--src-tauri-dir', required=True, help='Tauri.toml + capabilities 所在目录')
     parser.add_argument('--dist', required=True, help='前端 vite build 产物目录')
     parser.add_argument('--testkit', required=True, help='testkit.js 路径')
+    parser.add_argument(
+        '--suites', default=None, help="逗号分隔的 suite 过滤(如 'spa.each_click,spa.navigate');缺省跑全部"
+    )
     parser.add_argument('--report-dir', default='reports/native')
     args = parser.parse_args()
 
@@ -256,11 +259,15 @@ def main() -> None:
         raise SystemExit(f"{args.runtime} 未返回 FastAPI 实例")
     fastapi_app = candidate
 
+    run_config: dict[str, Any] = {}
+    if args.suites:
+        run_config['suites'] = str(args.suites).split(',')
     config = HarnessConfig(
         src_tauri_dir=Path(args.src_tauri_dir),
         frontend_dist=Path(args.dist),
         testkit_bundle=Path(args.testkit),
         report_dir=Path(args.report_dir),
+        run_config=run_config,
     )
     report = NativeHarness(fastapi_app, config).run()
     print(report.to_markdown())

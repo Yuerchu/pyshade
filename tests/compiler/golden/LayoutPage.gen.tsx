@@ -13,11 +13,6 @@ export function LayoutPage() {
   const rt = usePageRuntime();
 
   const [panels_0_0_0Value, setPanels_0_0_0Value] = useState<string>("");
-
-  const collectValues = (_includeSensitive: boolean): Record<string, string | boolean> => ({
-    panels_0_0_0: panels_0_0_0Value,
-  });
-
   return (
     <main className="flex min-h-svh items-center justify-center p-6">
       {rt.ov("LayoutPage.card", "visible", true) && (

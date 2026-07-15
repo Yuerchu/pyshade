@@ -5,7 +5,7 @@ import pytest
 from pyshade.compiler.checks import CompileError, check_page_ir
 from pyshade.compiler.emit_page import emit_page
 from pyshade.compiler.ir import build_page_ir
-from pyshade.components import Badge, Card, Option, Progress, RadioGroup, Select, Slider, Text
+from pyshade.components import Badge, Button, Card, Option, Progress, RadioGroup, Select, Slider, Text
 from pyshade.events import EventContext
 from pyshade.expr import ClientVal, value_of
 from pyshade.page import Page
@@ -17,6 +17,9 @@ def on_effort_change(ctx: EventContext) -> None: ...
 
 
 def on_volume_change(ctx: EventContext) -> None: ...
+
+
+def on_save(ctx: EventContext) -> None: ...
 
 
 class FormState(ServerState):
@@ -43,8 +46,9 @@ class FormControlsPage(Page):
     loud = Badge('响亮', visible=value_of(volume) > 100)
     effort_echo = Text(text='档位:' + value_of(effort), visible=value_of(effort) != '', muted=True)
     sync = Progress(FormState.sync_pct)
+    save = Button('保存', submit=True, on_click=on_save)
 
-    card = Card(effort, theme_radio, volume, loud, effort_echo, sync, title='表单控件', description='M2 Wave 2')
+    card = Card(effort, theme_radio, volume, loud, effort_echo, sync, save, title='表单控件', description='M2 Wave 2')
 
 
 class TestFormControlsGolden:

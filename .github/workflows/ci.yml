@@ -85,6 +85,15 @@ jobs:
       - run: pnpm -C frontend build:css
       - name: CSS coverage gate
         run: uv run python scripts/check_css_coverage.py
+      # 组件画廊 + 任务看板:全组件/路由/Each 的生成代码过真实 tsc
+      - name: Compile gallery & board examples
+        run: |
+          uv run pyshade build component_gallery.app:app --out frontend/src/generated-gallery
+          uv run pyshade build task_board.app:app --out frontend/src/generated-board
+        env:
+          PYTHONPATH: examples/component_gallery/src:examples/task_board/src
+      - name: Typecheck all generated output
+        run: pnpm -C frontend typecheck
 
   # 发版产物模拟:有 Node 的一侧把 wheel(含 _frontend 源码/vendor/style.css)与
   # esbuild 版 testkit 造好,交给 bundle-zero-node 消费
@@ -193,11 +202,17 @@ jobs:
           done
           if grep -q 'process.env' dist-bundle/app.js; then echo 'NODE_ENV define 未生效'; exit 1; fi
           echo "bundle 三件套 OK($(stat -c%s dist-bundle/app.js 2>/dev/null || wc -c < dist-bundle/app.js) bytes)"
+      - name: pyshade bundle task_board (zero node)
+        shell: bash
+        run: .venv-wheel/Scripts/pyshade bundle task_board.app:app --out dist-board --workdir .pyshade/board-build
+        env:
+          PYTHONPATH: examples/task_board/src
       - name: Native E2E on bundle output
         shell: bash
         run: .venv-wheel/Scripts/python.exe -m pytest tests/e2e_native -m e2e_native -q --junitxml=reports/native-bundle/junit.xml
         env:
           PYSHADE_E2E_DIST: ${{ github.workspace }}/dist-bundle
+          PYSHADE_E2E_BOARD_DIST: ${{ github.workspace }}/dist-board
           PYSHADE_E2E_TESTKIT: ${{ github.workspace }}/testkit-esbuild/testkit.js
           WEBVIEW2_USER_DATA_FOLDER: ${{ runner.temp }}/wv2-bundle
       - uses: actions/upload-artifact@v4

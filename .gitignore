@@ -13,6 +13,8 @@ node_modules/
 
 # PyShade 编译产物(前端 generated 目录)
 frontend/src/generated/
+frontend/src/generated-gallery/
+frontend/src/generated-board/
 frontend/dist-testkit/
 
 # 零 Node 打包的发版产物与用户工作目录

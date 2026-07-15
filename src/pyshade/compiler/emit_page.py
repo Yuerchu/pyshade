@@ -129,6 +129,8 @@ class _PageEmitContext:
         """asChild 槽(Dialog trigger / Tooltip 宿主)不发 visible guard(单元素约束)。"""
         self.loop: _LoopContext | None = None
         """Each 模板发射中(§3.3 模板行):plain prop 发字面量,事件 payload 带 item_index。"""
+        self.uses_collect_values: bool = False
+        """页面存在 submit 消费点才发 collectValues(未使用的声明过不了 noUnusedLocals)。"""
         self.item_models: dict[str, type[BaseModel]] = {}
         """Each 项模型(类名 → 类):页面头部发 `import type { ... } from "../types.gen"`。"""
 
@@ -308,6 +310,7 @@ def emit_button(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
                 payload_parts.append(f'item_key: {ctx.loop.item_var}.{ctx.loop.key_field}')
             attrs.append(f'onClick={{() => rt.fire({hid}, {{ {", ".join(payload_parts)} }})}}')
         elif is_submit:
+            ctx.uses_collect_values = True
             attrs.append(f'onClick={{() => rt.fire({hid}, {{ values: collectValues(true) }})}}')
         else:
             attrs.append(f'onClick={{() => rt.fire({hid}, {{}})}}')
@@ -1153,7 +1156,7 @@ def emit_page(page_ir: PageIR) -> str:
         var = _var_name(node.anchor)
         w.line(f'const {var}Ref = useRef<HTMLInputElement>(null);')
 
-    if ctx.controlled_inputs or ctx.sensitive_inputs or ctx.client_vals:
+    if ctx.uses_collect_values:
         w.line()
         controlled_entries = [f'{_var_name(n.anchor)}: {ctx.value_var(n)}' for n in ctx.controlled_inputs]
         client_val_entries = [f'{name}: {name}Value' for name, _val in ctx.client_vals]
