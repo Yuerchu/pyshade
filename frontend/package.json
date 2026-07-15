@@ -9,28 +9,31 @@
     "build:testkit": "vite build --config vite.testkit.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:css": "tailwindcss -i src/index.css -o dist-style/style.css --minify",
+    "build:vendor": "echo managed-by-scripts/build_vendor.py"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.11",
     "@radix-ui/react-slot": "^1.3.0",
     "@radix-ui/react-switch": "^1.3.3",
-    "@tailwindcss/vite": "^4.3.2",
     "@tauri-apps/api": "^2.11.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "tailwind-merge": "^3.6.0",
-    "tailwindcss": "^4.3.2"
+    "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.3.2",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "oxlint": "^1.71.0",
     "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "tailwindcss": "^4.3.2",
+    "@tailwindcss/vite": "^4.3.2"
   }
 }

@@ -30,6 +30,19 @@ _TS_TYPE: dict[ExprType, str] = {
     ExprType.FLOAT: 'number',
 }
 
+SHADCN_MODULES: dict[str, str] = {
+    'Button': '"@/components/ui/button"',
+    'Card': '"@/components/ui/card"',
+    'CardContent': '"@/components/ui/card"',
+    'CardDescription': '"@/components/ui/card"',
+    'CardHeader': '"@/components/ui/card"',
+    'CardTitle': '"@/components/ui/card"',
+    'Input': '"@/components/ui/input"',
+    'Label': '"@/components/ui/label"',
+    'Switch': '"@/components/ui/switch"',
+}
+"""shadcn 元件名 → import 模块;emit 与 bundler(extra_components 逃生舱)共用。"""
+
 
 def register(tag: str) -> Callable[[EmitFn], EmitFn]:
     def decorator(fn: EmitFn) -> EmitFn:
@@ -366,20 +379,9 @@ def emit_page(page_ir: PageIR) -> str:
         w.line(f'import {{ {", ".join(sorted(react_imports))} }} from "react";')
     w.line()
 
-    shadcn_map: dict[str, str] = {
-        'Button': '"@/components/ui/button"',
-        'Card': '"@/components/ui/card"',
-        'CardContent': '"@/components/ui/card"',
-        'CardDescription': '"@/components/ui/card"',
-        'CardHeader': '"@/components/ui/card"',
-        'CardTitle': '"@/components/ui/card"',
-        'Input': '"@/components/ui/input"',
-        'Label': '"@/components/ui/label"',
-        'Switch': '"@/components/ui/switch"',
-    }
     by_module: dict[str, list[str]] = {}
     for imp in sorted(ctx.imports):
-        module = shadcn_map.get(imp, f'"@/components/ui/{imp.lower()}"')
+        module = SHADCN_MODULES.get(imp, f'"@/components/ui/{imp.lower()}"')
         by_module.setdefault(module, []).append(imp)
     for module, names in sorted(by_module.items()):
         w.line(f'import {{ {", ".join(sorted(names))} }} from {module};')

@@ -82,6 +82,129 @@ jobs:
       - run: pnpm -C frontend lint
       - run: pnpm -C frontend build
       - run: pnpm -C frontend build:testkit
+      - run: pnpm -C frontend build:css
+      - name: CSS coverage gate
+        run: uv run python scripts/check_css_coverage.py
+
+  # 发版产物模拟:有 Node 的一侧把 wheel(含 _frontend 源码/vendor/style.css)与
+  # esbuild 版 testkit 造好,交给 bundle-zero-node 消费
+  wheel-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: '3.13'
+      - run: uv sync --group dev
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm -C frontend install --frozen-lockfile
+      - run: pnpm -C frontend build:css
+      - name: Materialize vendor tree
+        run: uv run python scripts/build_vendor.py
+      - name: Build testkit with esbuild (vite 对照)
+        run: uv run pyshade bundle-testkit --out testkit-esbuild/testkit.js
+      - run: uv build --wheel
+      - name: Assert wheel carries frontend assets
+        run: |
+          uv run python - <<'EOF'
+          import glob, sys, zipfile
+          wheel = glob.glob('dist/pyshade-*.whl')[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          required = [
+              'pyshade/_frontend/static/style.css',
+              'pyshade/_frontend/static/index.html',
+              'pyshade/_frontend/vendor-manifest.json',
+              'pyshade/_frontend/src/runtime/page.ts',
+              'pyshade/_frontend/vendor/node_modules/react/package.json',
+          ]
+          missing = [n for n in required if n not in names]
+          if missing:
+              sys.exit(f'wheel 缺件: {missing}')
+          print(f'wheel OK: {wheel} ({len(names)} entries)')
+          EOF
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pyshade-wheel
+          path: dist/pyshade-*.whl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: testkit-esbuild
+          path: testkit-esbuild/testkit.js
+
+  # 零 Node 验收:剔除 node 后以 wheel 安装的 pyshade 走包数据路径打包,真机 E2E 吃产物
+  bundle-zero-node:
+    runs-on: windows-latest
+    needs: wheel-assets
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: pyshade-wheel
+          path: wheel-dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: testkit-esbuild
+          path: testkit-esbuild
+      - name: Strip node from PATH
+        shell: pwsh
+        run: |
+          $dirs = $env:Path -split ';' | Where-Object {
+            $_ -and -not (Test-Path (Join-Path $_ 'node.exe')) -and -not (Test-Path (Join-Path $_ 'npm.cmd'))
+          }
+          "PATH=" + ($dirs -join ';') | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Assert node unavailable
+        shell: pwsh
+        run: |
+          if (Get-Command node -ErrorAction SilentlyContinue) { Write-Error 'node 仍可执行'; exit 1 }
+          if (Get-Command npm -ErrorAction SilentlyContinue) { Write-Error 'npm 仍可执行'; exit 1 }
+          Write-Output 'node/npm 已剔除'
+      - uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\pyshade
+          key: esbuild-${{ runner.os }}-${{ hashFiles('src/pyshade/bundler/_esbuild.py') }}
+      - name: Install wheel into clean venv
+        shell: bash
+        run: |
+          uv venv .venv-wheel --python 3.13
+          uv pip install --python .venv-wheel/Scripts/python.exe wheel-dist/pyshade-*.whl pytest pytauri-wheel anyio
+      - name: pyshade bundle (zero node)
+        shell: bash
+        run: .venv-wheel/Scripts/pyshade bundle login_form.app:app --out dist-bundle
+        env:
+          PYTHONPATH: examples/login_form/src
+      - name: Assert bundle artifacts
+        shell: bash
+        run: |
+          for f in index.html app.js style.css; do
+            test -f "dist-bundle/$f" || { echo "缺 $f"; exit 1; }
+          done
+          if grep -q 'process.env' dist-bundle/app.js; then echo 'NODE_ENV define 未生效'; exit 1; fi
+          echo "bundle 三件套 OK($(stat -c%s dist-bundle/app.js 2>/dev/null || wc -c < dist-bundle/app.js) bytes)"
+      - name: Native E2E on bundle output
+        shell: bash
+        run: .venv-wheel/Scripts/python.exe -m pytest tests/e2e_native -m e2e_native -q --junitxml=reports/native-bundle/junit.xml
+        env:
+          PYSHADE_E2E_DIST: ${{ github.workspace }}/dist-bundle
+          PYSHADE_E2E_TESTKIT: ${{ github.workspace }}/testkit-esbuild/testkit.js
+          WEBVIEW2_USER_DATA_FOLDER: ${{ runner.temp }}/wv2-bundle
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-bundle-report
+          path: reports/
 
   e2e-native:
     runs-on: windows-latest

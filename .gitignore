@@ -15,6 +15,19 @@ node_modules/
 frontend/src/generated/
 frontend/dist-testkit/
 
+# 零 Node 打包的发版产物与用户工作目录
+frontend/dist-vendor/
+frontend/dist-style/
+.pyshade/
+
+# canary 临时产物
+scripts/canary/.staging/
+scripts/canary/.out/
+scripts/canary/.dist/
+scripts/canary/.cache/
+scripts/canary/.report/
+scripts/canary/index-canary.css
+
 # 真机测试报告
 reports/
 

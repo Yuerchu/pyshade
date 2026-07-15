@@ -5,5 +5,15 @@
       "LoginPage.remember.on_change",
       "LoginPage.submit.on_click"
     ]
+  },
+  "components": {
+    "LoginPage": [
+      "Button",
+      "Card",
+      "Input",
+      "PasswordInput",
+      "Switch",
+      "Text"
+    ]
   }
 }

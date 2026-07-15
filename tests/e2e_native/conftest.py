@@ -4,6 +4,7 @@
 依赖:uv sync --group native
 """
 
+import os
 from pathlib import Path
 
 import pytest
@@ -15,8 +16,9 @@ REPO = Path(__file__).parent.parent.parent
 
 @pytest.fixture(scope='session')
 def native_report() -> TestReport:
-    dist = REPO / 'frontend' / 'dist'
-    testkit = REPO / 'frontend' / 'dist-testkit' / 'testkit.js'
+    # bundle-zero-node job 经 env 把真机 E2E 指向 esbuild 产物(与 vite 产物 job 互为对照)
+    dist = Path(os.environ.get('PYSHADE_E2E_DIST', REPO / 'frontend' / 'dist'))
+    testkit = Path(os.environ.get('PYSHADE_E2E_TESTKIT', REPO / 'frontend' / 'dist-testkit' / 'testkit.js'))
     if not (dist / 'index.html').exists():
         pytest.skip("缺前端产物:先 pnpm -C frontend build")
     if not testkit.exists():

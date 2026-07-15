@@ -31,6 +31,8 @@ def compile_app(app: ShadeApp, out_dir: str | Path) -> None:
         (pages_dir / f'{page_ir.name}.gen.tsx').write_text(tsx, encoding='utf-8', newline='\n')
 
     enums = collect_enums(page_irs)
+    extra_tags = [cls._shade_tag for cls in app.extra_components]  # pyright: ignore[reportPrivateUsage]
     (out / 'types.gen.ts').write_text(emit_types(enums), encoding='utf-8', newline='\n')
     (out / 'app.gen.tsx').write_text(emit_app(page_irs), encoding='utf-8', newline='\n')
-    (out / 'manifest.json').write_text(emit_manifest(page_irs), encoding='utf-8', newline='\n')
+    manifest = emit_manifest(page_irs, extra_components=extra_tags)
+    (out / 'manifest.json').write_text(manifest, encoding='utf-8', newline='\n')
