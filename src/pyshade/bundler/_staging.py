@@ -29,13 +29,31 @@ def staging_stamp(assets: FrontendAssets, parts: tuple[str, ...]) -> str:
     return digest.hexdigest()
 
 
-def prepare_staging(workdir: Path, assets: FrontendAssets, *, extra_parts: tuple[str, ...] = ()) -> str:
-    """把前端运行时源码铺进 workdir/src(幂等),返回 staging 指纹;指纹命中即跳过拷贝。"""
+def _read_marker(marker: Path) -> str | None:
+    """marker 读取兜底(权限/占用/编码损坏一律视为未命中,与 bundle stamp 读取模式对齐)。"""
+    try:
+        return marker.read_text(encoding='utf-8')
+    except (OSError, ValueError):
+        return None
+
+
+def prepare_staging(
+    workdir: Path,
+    assets: FrontendAssets,
+    *,
+    extra_parts: tuple[str, ...] = (),
+    fresh: bool = False,
+) -> str:
+    """把前端运行时源码铺进 workdir/src(幂等),返回 staging 指纹;指纹命中即跳过拷贝。
+
+    fresh=True(PYSHADE_BUNDLE_FRESH=1 逃生口)强制重铺:staged 树被外部破坏时
+    指纹(只看资产源)仍会命中,逃生口必须覆盖整个增量机制。
+    """
     parts = (*_SRC_PARTS, *extra_parts)
     stamp = staging_stamp(assets, parts)
     marker = workdir / _STAMP_NAME
     src = workdir / 'src'
-    if src.is_dir() and marker.is_file() and marker.read_text(encoding='utf-8') == stamp:
+    if not fresh and src.is_dir() and marker.is_file() and _read_marker(marker) == stamp:
         return stamp
 
     for part in parts:

@@ -19,6 +19,9 @@ class FrontendAssets:
     """预编译 Tailwind 产物。"""
     index_html: Path
     """bundle 模板 index.html。"""
+    vendor_stamp: Path
+    """vendor 依赖树的内容指纹源(wheel=vendor-manifest.json / 仓库=pnpm-lock.yaml):
+    依赖升级必须打掉 esbuild 输入哈希,否则错跳构建输出陈旧 app.js。"""
 
 
 def _package_assets() -> FrontendAssets | None:
@@ -35,6 +38,7 @@ def _package_assets() -> FrontendAssets | None:
         node_modules=base / 'vendor' / 'node_modules',
         style_css=base / 'static' / 'style.css',
         index_html=base / 'static' / 'index.html',
+        vendor_stamp=base / 'vendor-manifest.json',
     )
 
 
@@ -48,6 +52,7 @@ def _repo_assets() -> FrontendAssets | None:
         node_modules=frontend / 'node_modules',
         style_css=frontend / 'dist-style' / 'style.css',
         index_html=frontend / 'bundle' / 'index.html',
+        vendor_stamp=frontend / 'pnpm-lock.yaml',
     )
 
 
@@ -64,6 +69,8 @@ def locate_assets() -> FrontendAssets:
         missing.append(f"预编译样式 {assets.style_css}(仓库内:pnpm -C frontend build:css)")
     if not assets.index_html.is_file():
         missing.append(f"index.html 模板 {assets.index_html}")
+    if not assets.vendor_stamp.is_file():
+        missing.append(f"vendor 指纹源 {assets.vendor_stamp}(wheel:vendor-manifest.json / 仓库:pnpm-lock.yaml)")
     if missing:
         raise AssetsNotFoundError("前端资产缺件:\n  - " + "\n  - ".join(missing))
     return assets

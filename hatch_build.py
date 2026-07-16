@@ -28,6 +28,10 @@ class FrontendAssetsHook(BuildHookInterface):  # pyright: ignore[reportMissingTy
     PLUGIN_NAME = 'custom'
 
     def initialize(self, version: str, build_data: dict[str, Any]) -> None:
+        if version == 'editable':
+            # editable 布局下 resources.files('pyshade') 指向 src/pyshade,注入产物会被物理拷进
+            # site-packages 却永不被 _package_assets 读取(运行时走仓库回退)——9.4MB 纯死重
+            return
         strict = os.environ.get('PYSHADE_REQUIRE_FRONTEND_ASSETS') == '1'
         force_include: dict[str, str] = build_data.setdefault('force_include', {})
         missing: list[str] = []

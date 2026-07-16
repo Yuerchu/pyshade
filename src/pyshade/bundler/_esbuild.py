@@ -5,13 +5,13 @@ env:PYSHADE_NPM_REGISTRY(国内镜像)/ PYSHADE_ESBUILD_PATH(离线兜底)/ PYSH
 """
 
 import hashlib
+import http.client
 import os
 import platform
 import stat
 import subprocess
 import tarfile
 import tempfile
-import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -71,7 +71,10 @@ def _download(url: str) -> bytes:
         try:
             with urllib.request.urlopen(url, timeout=60) as response:
                 return response.read()
-        except (urllib.error.URLError, TimeoutError) as exc:
+        # OSError 覆盖 URLError/ConnectionResetError/TimeoutError;HTTPException 覆盖
+        # 读 body 中途断流的 IncompleteRead/BadStatusLine(真实网络最常见的失败形态,
+        # 此前裸抛不重试也不给自救提示);KeyboardInterrupt/SystemExit 均不在其中,不吞
+        except (OSError, http.client.HTTPException) as exc:
             last_error = exc
             l.warning("pyshade.bundler: 下载失败(第 {} 次): {}", attempt, exc)
     raise EsbuildAcquireError(

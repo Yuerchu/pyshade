@@ -7,7 +7,6 @@ pyshade.testing 中唯一接触 pytauri 的模块(全部惰性 import)。
 """
 
 import json
-import os
 import platform
 import threading
 import time
@@ -212,7 +211,9 @@ class NativeHarness:
 
         # frontendDist 必须是相对 src_tauri_dir 的路径:Windows 盘符绝对路径(C:/...)
         # 会被 Tauri 的 untagged FrontendDist 反序列化误判为 URL(scheme 'c:'),页面加载失败
-        rel_dist = Path(os.path.relpath(config.frontend_dist.absolute(), config.src_tauri_dir.absolute())).as_posix()
+        from pyshade.shell import relative_frontend_dist
+
+        rel_dist = relative_frontend_dist(config.frontend_dist, config.src_tauri_dir)
         tauri_config: dict[str, Any] = {
             'build': {'frontendDist': rel_dist},
             'app': {'windows': [self._window_config()]},
@@ -269,7 +270,6 @@ def main() -> None:
     """python -m pyshade.testing:CLI 入口(参数指向 runtime 工厂与产物路径)。"""
     import argparse
     import importlib
-    from pathlib import Path
 
     parser = argparse.ArgumentParser(prog='pyshade.testing', description='PyShade 真机 E2E harness')
     parser.add_argument('--runtime', required=True, help='FastAPI 工厂,如 login_form.runtime:build_runtime')

@@ -61,16 +61,31 @@ def esbuild_args(*, entry: str, outfile: Path, dev: bool) -> list[str]:
     return args
 
 
-def _esbuild_input_hash(work: Path, *, staging_stamp: str, args: list[str], node_path: str) -> str:
-    """esbuild 输入指纹:staged 源码指纹 + generated/entry/tsconfig 全部内容 + 版本与参数。
+def _esbuild_input_hash(
+    work: Path,
+    *,
+    staging_stamp: str,
+    args: list[str],
+    node_path: str,
+    vendor_stamp: Path,
+    esbuild: Path,
+) -> str:
+    """esbuild 输入指纹:staged 源码指纹 + generated/entry/tsconfig 全部内容 + 版本与参数 +
+    vendor 指纹源内容 + 实际二进制身份。
 
     漏项即错误跳过——输入面全列;theme.gen.css 在 generated 目录内,天然入哈希。
+    vendor 指纹按 manifest/lockfile 内容(npm 包版本不可变,O(1) 且免 mtime 漂移假重建);
+    二进制身份盖住 PYSHADE_ESBUILD_PATH 覆盖换版本的情况(常量 ESBUILD_VERSION 感知不到)。
     """
     digest = hashlib.sha256()
     digest.update(f'esbuild {ESBUILD_VERSION}\n'.encode())
+    bin_stat = esbuild.stat()
+    digest.update(f'esbuild_bin {esbuild}|{bin_stat.st_size}|{bin_stat.st_mtime_ns}\n'.encode())
     digest.update(('args ' + ' '.join(args) + '\n').encode())
     digest.update(f'staging {staging_stamp}\n'.encode())
     digest.update(f'node_path {node_path}\n'.encode())
+    digest.update(b'::vendor-stamp\n')
+    digest.update(vendor_stamp.read_bytes())
     for rel in ('src/entry.tsx', 'tsconfig.json'):
         digest.update(f'::{rel}\n'.encode())
         digest.update((work / rel).read_bytes())
@@ -94,8 +109,9 @@ def bundle_app(
     out = Path(out_dir).absolute()
     work = Path(workdir).absolute()
     assets: FrontendAssets = locate_assets()
+    fresh_forced = os.environ.get('PYSHADE_BUNDLE_FRESH') == '1'
 
-    staging_fingerprint = prepare_staging(work, assets)
+    staging_fingerprint = prepare_staging(work, assets, fresh=fresh_forced)
     t_staged = time.monotonic()
     compile_app(app, work / 'src' / 'generated')
     (work / 'src' / 'entry.tsx').write_text(emit_entry_tsx(app), encoding='utf-8', newline='\n')
@@ -108,20 +124,29 @@ def bundle_app(
     args = esbuild_args(entry='src/entry.tsx', outfile=outfile, dev=dev)
     node_path = str(assets.node_modules)
 
-    input_hash = _esbuild_input_hash(work, staging_stamp=staging_fingerprint, args=args, node_path=node_path)
+    input_hash = _esbuild_input_hash(
+        work,
+        staging_stamp=staging_fingerprint,
+        args=args,
+        node_path=node_path,
+        vendor_stamp=assets.vendor_stamp,
+        esbuild=esbuild,
+    )
     stamp_file = work / _BUNDLE_STAMP
-    fresh_forced = os.environ.get('PYSHADE_BUNDLE_FRESH') == '1'
     skipped = False
     if not fresh_forced and outfile.is_file() and stamp_file.is_file():
         try:
             recorded: object = json.loads(stamp_file.read_text(encoding='utf-8'))
         except (OSError, ValueError):
             recorded = None
-        skipped = recorded == {'hash': input_hash}
+        # stamp 同时记产物 size:app.js 被外部截断/损坏时不得静默复用
+        skipped = recorded == {'hash': input_hash, 'size': outfile.stat().st_size}
     if not skipped:
         env = {**os.environ, 'NODE_PATH': node_path}
         run_esbuild(esbuild, args, cwd=work, env=env)
-        stamp_file.write_text(json.dumps({'hash': input_hash}), encoding='utf-8', newline='\n')
+        stamp_file.write_text(
+            json.dumps({'hash': input_hash, 'size': outfile.stat().st_size}), encoding='utf-8', newline='\n'
+        )
     t_bundled = time.monotonic()
 
     theme_css: str | None = None
@@ -166,7 +191,7 @@ def bundle_testkit(out_file: str | Path, *, workdir: str | Path = '.pyshade/test
     if not (assets.src_dir / 'testkit').is_dir():
         raise RuntimeError("testkit 源码不存在:bundle_testkit 仅支持仓库布局")
 
-    prepare_staging(work, assets, extra_parts=('testkit',))
+    prepare_staging(work, assets, extra_parts=('testkit',), fresh=os.environ.get('PYSHADE_BUNDLE_FRESH') == '1')
     (work / 'tsconfig.json').write_text(emit_tsconfig(), encoding='utf-8', newline='\n')
 
     esbuild = ensure_esbuild()

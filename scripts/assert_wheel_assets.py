@@ -15,6 +15,8 @@ _REQUIRED = (
     'pyshade/_frontend/src/runtime/page.ts',
     'pyshade/_frontend/src/runtime/scheme.ts',
     'pyshade/_frontend/src/ipc/shadeFetch.ts',
+    'pyshade/_frontend/src/components/ui/button.tsx',
+    'pyshade/_frontend/src/lib/utils.ts',
     'pyshade/_frontend/vendor/node_modules/react/package.json',
 )
 
@@ -23,6 +25,10 @@ def main() -> int:
     wheels = glob.glob('dist/pyshade-*.whl')
     if not wheels:
         print("dist/ 下没有 pyshade wheel", file=sys.stderr)
+        return 1
+    if len(wheels) > 1:
+        # 报错优于按 mtime 挑选:CI 每次干净构建只应有一个 wheel,多个即可能校验到旧版本
+        print(f"dist/ 下有多个 pyshade wheel:{wheels};请清理 dist/ 后重跑(防误检旧包)", file=sys.stderr)
         return 1
     wheel = wheels[0]
     names = set(zipfile.ZipFile(wheel).namelist())

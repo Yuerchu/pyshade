@@ -11,13 +11,23 @@ from pyshade.compiler import compile_app
 
 def load_app(spec: str) -> ShadeApp:
     """解析 '模块路径[:属性]'(默认属性 app)并返回 ShadeApp 实例;失败即 SystemExit。"""
+    # console script 不含 cwd(`python -m` 语义有):补齐,否则项目目录下
+    # `pyshade bundle app:app` 报导入失败而 `pyshade dev`(worker 经 -m 拉起)却能跑
+    cwd = str(Path.cwd())
+    if cwd not in sys.path:
+        sys.path.insert(0, cwd)
     module_path, _, attr = spec.rpartition(':')
     if not module_path:
         module_path, attr = attr, 'app'
     try:
         module = importlib.import_module(module_path)
     except ImportError as exc:
-        print(f"无法导入模块 {module_path!r}: {exc}", file=sys.stderr)
+        print(
+            f"无法导入模块 {module_path!r}: {exc}\n"
+            "已尝试将当前目录加入 sys.path;src 布局请确认已安装(uv pip install -e .)"
+            "或设置 PYTHONPATH 指向源码目录",
+            file=sys.stderr,
+        )
         raise SystemExit(1) from exc
     app_obj = getattr(module, attr, None)
     if not isinstance(app_obj, ShadeApp):
@@ -34,15 +44,25 @@ def _build(args: argparse.Namespace) -> None:
 
 
 def _bundle(args: argparse.Namespace) -> None:
+    import subprocess
+
     from pyshade.bundler import bundle_app
+    from pyshade.bundler._assets import AssetsNotFoundError
+    from pyshade.bundler._esbuild import EsbuildAcquireError
+    from pyshade.compiler.errors import CompileError
 
     app_obj = load_app(args.app)
-    result = bundle_app(
-        app_obj,
-        args.out,
-        dev=args.dev,
-        workdir=args.workdir,
-    )
+    try:
+        result = bundle_app(
+            app_obj,
+            args.out,
+            dev=args.dev,
+            workdir=args.workdir,
+        )
+    # 对齐 _init/_package 的收敛模式:已知错误族给干净 stderr,不裸露 traceback
+    except (EsbuildAcquireError, AssetsNotFoundError, CompileError, RuntimeError, subprocess.TimeoutExpired) as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
     print(f"打包完成 → {result.out_dir}(app.js {result.app_js_bytes / 1024:.0f} KB)")
 
 

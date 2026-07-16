@@ -22,12 +22,24 @@ if TYPE_CHECKING:
     from pyshade.asgi._dev import DevHttpServer
 
 from anyio.from_thread import start_blocking_portal
+from pytauri import RunEvent
 
 from pyshade.app import ShadeApp
 from pyshade.asgi import AsgiIpcAdapter
 from pyshade.components.base import Handler
 from pyshade.events import EventRegistry
 from pyshade.runtime import build_fastapi_app
+
+
+def relative_frontend_dist(dist: Path, config_dir: Path) -> str:
+    """dist → 相对 config_dir 的 POSIX 路径(Tauri frontendDist 不接受盘符绝对路径)。"""
+    try:
+        return Path(os.path.relpath(dist.absolute(), config_dir.absolute())).as_posix()
+    except ValueError as exc:  # Windows 跨盘符:relpath 无法表达
+        raise SystemExit(
+            f"前端产物 {dist} 与配置目录 {config_dir} 不在同一盘符,无法转相对路径"
+            "(Tauri frontendDist 不接受跨盘绝对路径)→ 请把 dist 移到项目同盘符,或用 PYSHADE_DIST 指定同盘路径"
+        ) from exc
 
 
 def _resolve_dist(dist_dir: Path | None, config_dir: Path) -> Path:
@@ -43,7 +55,6 @@ def _resolve_dist(dist_dir: Path | None, config_dir: Path) -> Path:
 
 
 def _smoke_callback() -> Any:
-    from pytauri import RunEvent
 
     def on_event(app_handle: Any, event: Any) -> None:
         if isinstance(event, RunEvent.Ready):
@@ -78,8 +89,7 @@ def run(
             tauri_config: dict[str, Any] = {'build': {'frontendDist': 'http://localhost:5173'}}
         else:
             dist = _resolve_dist(dist_dir, config_dir)
-            rel_dist = Path(os.path.relpath(dist.absolute(), config_dir.absolute())).as_posix()
-            tauri_config = {'build': {'frontendDist': rel_dist}}
+            tauri_config = {'build': {'frontendDist': relative_frontend_dist(dist, config_dir)}}
 
         from pytauri_wheel.lib import builder_factory, context_factory
 

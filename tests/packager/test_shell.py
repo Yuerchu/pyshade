@@ -78,6 +78,21 @@ def _install_fake_standalone(monkeypatch: pytest.MonkeyPatch, record: dict[str, 
     monkeypatch.setattr(sys, '_pytauri_standalone', True, raising=False)
 
 
+class TestRelativeFrontendDist:
+    @pytest.mark.skipif(sys.platform != 'win32', reason='跨盘符语义仅 Windows')
+    def test_cross_drive_gives_clear_error(self, tmp_path: Path) -> None:
+        from pyshade.shell import relative_frontend_dist
+
+        other_drive = Path('Q:/pyshade-dist')  # 假定不存在的盘符:relpath 不触盘,仅字符串运算
+        with pytest.raises(SystemExit, match='同一盘符'):
+            relative_frontend_dist(other_drive, tmp_path)
+
+    def test_same_root_relative(self, tmp_path: Path) -> None:
+        from pyshade.shell import relative_frontend_dist
+
+        assert relative_frontend_dist(tmp_path / 'dist', tmp_path / 'cfg') == '../dist'
+
+
 class TestWheelMode:
     def test_dist_baked_as_relative_path(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         record: dict[str, Any] = {}
