@@ -81,6 +81,7 @@ export function ShadeAppProvider({
     const mq = matchMedia("(prefers-color-scheme: dark)");
     const onChange = (event: MediaQueryListEvent) => setSystemDark(event.matches);
     mq.addEventListener("change", onChange);
+    setSystemDark(mq.matches); // 回读:挂载采样与 attach 之间 OS 恰好切换的窗口(同值 no-op)
     return () => mq.removeEventListener("change", onChange);
   }, [scheme]);
 
@@ -142,13 +143,19 @@ export function ShadeAppProvider({
         if (patch.target !== NAV_TARGET) continue;
         const page = patch.props.page;
         if (typeof page === "string") {
+          // 与 hashchange 路径同一防御:$nav 也是运行时外部输入,未知页面名会白屏且
+          // keepAlive 下永驻 visitedPages。空集放行是 testkit/手动挂载形态(生成 App 恒传 pageNames)
+          if (names.size > 0 && !names.has(page)) {
+            console.error(`[pyshade] $nav 指向未知页面 "${page}",已忽略;可用页面:`, [...names]);
+            continue;
+          }
           navigateTo(page);
         } else {
           console.warn("[pyshade] $nav patch 缺少 page 字段,已忽略:", patch);
         }
       }
     },
-    [bound, navigateTo],
+    [bound, names, navigateTo],
   );
 
   // 断连指示:无 push 订阅的应用状态恒 false,永不渲染徽标

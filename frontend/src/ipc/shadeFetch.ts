@@ -49,7 +49,11 @@ async function ipcFetch(path: string, init: ShadeFetchInit): Promise<Response> {
   const appHeaders: Record<string, string> = { ...(init.headers ?? {}) };
   const bodyBytes = encodeBody(init.body, appHeaders);
 
-  const [rawPath, query = ""] = path.split("?", 2) as [string, string?];
+  // 与 HTTP 模式的 window.fetch 走同一 WHATWG URL 规范化:非 ASCII 按 UTF-8 percent-encode、
+  // 既有 %XX 不二次编码、第二个 ? 归入 query(此前 split("?", 2) 会静默截断尾段)
+  const url = new URL(path, "http://pyshade.invalid");
+  const rawPath = url.pathname;
+  const query = url.search.slice(1);
 
   // Channel 先建、onmessage 先挂:帧可能早于 invoke promise resolve 抵达,必须缓冲
   const buffered: Uint8Array[] = [];
@@ -68,7 +72,8 @@ async function ipcFetch(path: string, init: ShadeFetchInit): Promise<Response> {
     ...appHeaders,
     pyfunc: ASGI_COMMAND,
     "x-pyshade-method": method,
-    "x-pyshade-path": encodeURI(rawPath),
+    // URL 已 percent-encode(纯 ASCII):再包 encodeURI 会把 % 双重编码成 %25
+    "x-pyshade-path": rawPath,
     "x-pyshade-channel": channel.toJSON(),
   };
   if (query) {

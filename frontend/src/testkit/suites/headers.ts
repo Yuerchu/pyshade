@@ -38,5 +38,21 @@ export async function suiteHeaders(): Promise<CaseResult> {
   const missing = Object.entries(custom).filter(([k, v]) => echoed[k] !== v);
   check(result, "custom_headers_64", missing.length === 0, missing.map(([k]) => k).join(","));
 
+  // URL 解析统一(发版前审查):IPC 与 HTTP 模式对同一 path 的解析结果必须一致
+  // ①query 自身含 ?(合法):split("?", 2) 的 limit 语义会静默截断尾段
+  const doubleQ = await shadeFetch("/_shade/_test/echo/a?x=1?y=2", { method: "POST" });
+  const doubleQData = (await doubleQ.json()) as { query: string };
+  check(result, "query_with_question_mark", doubleQData.query === "x=1?y=2", `got=${doubleQData.query}`);
+
+  // ②非 ASCII query:IPC 模式此前原样进 invoke header(Headers 校验会炸);URL 规范化后 percent-encode
+  const unicode = await shadeFetch("/_shade/_test/echo/a?q=中文", { method: "POST" });
+  const unicodeData = (await unicode.json()) as { query: string };
+  check(result, "non_ascii_query", decodeURIComponent(unicodeData.query) === "q=中文", `got=${unicodeData.query}`);
+
+  // ③已编码段不双重编码:encodeURI(%20) 会变 %2520,服务端解出 "%20" 而非空格
+  const preEncoded = await shadeFetch("/_shade/_test/echo/a%20b", { method: "POST" });
+  const preEncodedData = (await preEncoded.json()) as { path: string };
+  check(result, "no_double_percent_encoding", preEncodedData.path.endsWith("/a b"), `got=${preEncodedData.path}`);
+
   return result;
 }

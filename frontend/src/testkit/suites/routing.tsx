@@ -123,6 +123,12 @@ export async function suiteRoutingDeepLink(): Promise<CaseResult> {
     await flush();
     check(result, "invalid_hash_ignored", container.querySelector("#pyshade-routing-detail") !== null);
     check(result, "invalid_hash_not_rewritten", location.hash === "#/NoSuchPage", location.hash);
+
+    // $nav 指向未知页面:与 hash 路径同一防御(忽略,不污染 visitedPages/不白屏)
+    store?.applyPatches([{ target: "$nav", props: { page: "NoSuchPage" } }]);
+    await flush();
+    check(result, "nav_patch_unknown_page_ignored", container.querySelector("#pyshade-routing-detail") !== null);
+    check(result, "nav_patch_unknown_not_current", store?.currentPage === "RouteDetail", store?.currentPage);
   } finally {
     root.unmount();
     container.remove();
