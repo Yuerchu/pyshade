@@ -52,3 +52,44 @@ async def test_docs_routes_absent(tmp_path: Path) -> None:
         for path in ('/docs', '/openapi.json'):
             response = await client.get(path)
             assert response.status_code == 404
+
+
+def test_run_serve_sets_graceful_shutdown_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """/_shade/push SSE 常驻不关:默认 timeout_graceful_shutdown=None 会让 Ctrl+C 无限等
+    "Waiting for connections to close"(须二次强杀)。spy 断言参数,不起真 server。"""
+    from typing import Any
+
+    import uvicorn
+
+    import pyshade.bundler as bundler_mod
+    import pyshade.cli as cli_mod
+    from pyshade.app import ShadeApp
+    from pyshade.bundler import BundleResult
+    from pyshade.components import Text
+    from pyshade.page import Page
+    from pyshade.web import run_serve
+
+    class ServeProbePage(Page):
+        hello = Text('serve')
+
+    captured: dict[str, Any] = {}
+
+    def fake_run(app: Any, **kwargs: Any) -> None:
+        captured.update(kwargs)
+
+    def fake_bundle(app: Any, out_dir: Any, **kwargs: Any) -> BundleResult:
+        dist = Path(out_dir)
+        dist.mkdir(parents=True, exist_ok=True)
+        (dist / 'index.html').write_text('<html></html>', encoding='utf-8')
+        return BundleResult(out_dir=dist, app_js_bytes=0, duration_ms=0)
+
+    def fake_load(spec: str) -> ShadeApp:
+        return ShadeApp(pages=[ServeProbePage])
+
+    monkeypatch.setattr(uvicorn, 'run', fake_run)
+    monkeypatch.setattr(bundler_mod, 'bundle_app', fake_bundle)
+    monkeypatch.setattr(cli_mod, 'load_app', fake_load)
+
+    assert run_serve('probe:app', workdir=tmp_path / 'serve') == 0
+    assert captured['timeout_graceful_shutdown'] == 3
+    assert captured['lifespan'] == 'on'

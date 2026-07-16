@@ -10,12 +10,13 @@ PYSHADE_CPYTHON_SHA256(自选版本时的校验值)/ PYSHADE_CACHE_DIR。
 """
 
 import hashlib
+import http.client
 import os
 import platform
+import posixpath
 import shutil
 import tarfile
 import tempfile
-import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -93,7 +94,9 @@ def _download(url: str) -> bytes:
         try:
             with urllib.request.urlopen(url, timeout=300) as response:
                 return response.read()
-        except (urllib.error.URLError, TimeoutError) as exc:
+        # OSError 覆盖 URLError/ConnectionResetError/TimeoutError;HTTPException 覆盖
+        # 读 body 中途断流的 IncompleteRead(最常见的真实失败形态,此前裸抛不重试)
+        except (OSError, http.client.HTTPException) as exc:
             last_error = exc
             l.warning("pyshade.packager: 下载失败(第 {} 次): {}", attempt, exc)
     raise CpythonAcquireError(f"便携 CPython 下载失败: {url}\n{_SELF_HELP}") from last_error
@@ -146,6 +149,38 @@ def pyembed_python_path(pyembed_dir: Path) -> Path:
     return pyembed_dir / 'python' / 'bin' / 'python3'
 
 
+def _tar_supports_filter() -> bool:
+    """PEP 706 特性检测:filter= 参数 3.10.12/3.11.4 才 backport,3.10.0-3.10.11/
+    3.11.0-3.11.3 传入即 TypeError。函数化便于测试注入旧环境。"""
+    return hasattr(tarfile, 'data_filter')
+
+
+def _validate_member(member: tarfile.TarInfo) -> None:
+    """逐成员安全校验(全版本都跑):白名单前缀 + 路径逃逸 + 类型 + 链接目标。
+
+    无 filter 的老 Python 上这是唯一防线;有 filter 时叠加官方防护(filter='tar'
+    不拦链接目标逃逸,链接校验在此补齐)。unix 必须保留 symlink(libpython),
+    故校验目标而非剥离链接。
+    """
+    name = member.name[2:] if member.name.startswith('./') else member.name
+    if not (name == 'python' or name.startswith('python/')):
+        raise CpythonAcquireError(f"tarball 含预期外成员 {member.name},拒绝解压(防路径逃逸)")
+    if '..' in name.split('/') or posixpath.isabs(name) or '\\' in name:
+        # startswith('python/') 拦不住 'python/../../evil'
+        raise CpythonAcquireError(f"tarball 成员 {member.name} 含路径逃逸(../ 或绝对路径),拒绝解压")
+    if not (member.isreg() or member.isdir() or member.issym() or member.islnk()):
+        raise CpythonAcquireError(f"tarball 成员 {member.name} 是设备/FIFO 类型,拒绝解压")
+    if member.issym() or member.islnk():
+        linkname = member.linkname
+        if member.issym():
+            resolved = posixpath.normpath(posixpath.join(posixpath.dirname(name), linkname))
+        else:  # hardlink 目标是归档内路径,相对归档根
+            resolved = posixpath.normpath(linkname)
+        inside = resolved == 'python' or resolved.startswith('python/')
+        if posixpath.isabs(linkname) or '\\' in linkname or not inside:
+            raise CpythonAcquireError(f"tarball 链接成员 {member.name} → {linkname} 指向解压目录之外,拒绝解压")
+
+
 def extract_pyembed(
     tarball: Path,
     pyembed_dir: Path,
@@ -155,7 +190,7 @@ def extract_pyembed(
 ) -> Path:
     """解压 tarball 的 python/ 到 pyembed 目录,写 stamp;返回内嵌解释器路径。
 
-    成员路径白名单(必须以 python/ 开头,拒绝逃逸);unix 保留 symlink(libpython 需要)。
+    成员逐个过 _validate_member;解压按 Python 版本分支(PEP 706 兼容,见 _tar_supports_filter)。
     """
     if pyembed_dir.exists():
         shutil.rmtree(pyembed_dir)
@@ -164,14 +199,16 @@ def extract_pyembed(
     try:
         with tarfile.open(tarball, 'r:gz') as tar:
             for member in tar.getmembers():
-                name = member.name
-                if name.startswith('./'):
-                    name = name[2:]
-                if not (name == 'python' or name.startswith('python/')):
-                    raise CpythonAcquireError(f"tarball 含预期外成员 {member.name},拒绝解压(防路径逃逸)")
-            tar.extractall(pyembed_dir, filter='tar')
-    except tarfile.TarError as exc:
-        raise CpythonAcquireError(f"tarball 解析失败: {exc}") from exc
+                _validate_member(member)
+            if _tar_supports_filter():
+                tar.extractall(pyembed_dir, filter='tar')
+            else:
+                # 老版本无 filter 参数且传入即 TypeError:前置逐成员校验即等效防线
+                tar.extractall(pyembed_dir)
+    except (tarfile.TarError, OSError) as exc:
+        raise CpythonAcquireError(
+            f"tarball 解压失败({tarball} → {pyembed_dir}): {exc};磁盘空间/路径长度/权限问题也会走到这里"
+        ) from exc
 
     python = pyembed_python_path(pyembed_dir)
     if not python.is_file():

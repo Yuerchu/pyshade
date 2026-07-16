@@ -58,7 +58,12 @@ def worker_main(argv: list[str]) -> int:
         generation[:8],
     )
 
-    uvicorn.run(dispatcher, host='127.0.0.1', port=args.port, log_level='warning', lifespan='on')
+    # timeout_graceful_shutdown=1:dev SSE(重载事件/push)常驻不关,默认 None 会让优雅
+    # 关闭无限等 → POSIX 下 supervisor 的 SIGTERM 固定撑满 wait(10) 再 SIGKILL,
+    # 每次热重载凭空 +10s(Windows 硬杀不可见,主平台外的第一天体验)
+    uvicorn.run(
+        dispatcher, host='127.0.0.1', port=args.port, log_level='warning', lifespan='on', timeout_graceful_shutdown=1
+    )
     return 0
 
 

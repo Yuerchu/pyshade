@@ -316,6 +316,16 @@ beforeBuildCommand 留空,frontendDist 用 `pyshade bundle` 产物)。
   examples 把它挪到 dev 依赖组,packager 检测并 warn。
 - Linux 默认只出 deb:AppImage 的 libpython 挪位(tauri#11898)未验证,rpath 已加
   `$ORIGIN/../lib` 对冲,显式 `--bundles appimage` 可尝试。签名/公证 out of scope(§6)。
+- **发版前审查加固**:rpath/-L 走 `CARGO_ENCODED_RUSTFLAGS`(0x1f 分隔;RUSTFLAGS 按空白
+  切分,路径或 productName 含空格即断裂),用户既有 ENCODED/RUSTFLAGS 按 cargo 语义合并;
+  init 参数校验(crate_name/identifier/product_name 字符集、version 三段式 semver、
+  dynamic version 报错指向 `--version`),window_title 走 JSON 转义;tarball 解包按
+  PEP 706 特性检测分支(3.10.12/3.11.4 前无 filter 参数),逐成员校验全版本都跑
+  (`python/../../` 白名单漏洞、设备成员、sym/hardlink 目标逃逸);collect_artifacts
+  保留符号链接(macOS .app 签名保真);dev worker/`pyshade serve` 设
+  `timeout_graceful_shutdown`(1s/3s——SSE 常驻连接下默认 None 会无限等,POSIX 热重载
+  每次固定 +10s、serve Ctrl+C 挂死,即 §3.7 SSE 挂死教训的 uvicorn 形态);supervisor
+  心跳感知 worker 启动即崩(报错一次,不自动重启)。
 - 实测(Windows):安装包 27.2MB(NSIS,per-user 安装到 `%LOCALAPPDATA%`),
   首次全量编译 ~9min、增量 ~1min,pyembed 命中缓存的一键 package 83s。
 

@@ -8,6 +8,7 @@
   打包前预编译使 .pyc 进 resources 被卸载器追踪,顺带提速冷启动。
 """
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,6 +18,12 @@ from loguru import logger as l
 
 class PyembedInstallError(RuntimeError):
     """依赖安装进内嵌解释器失败。"""
+
+
+def _utf8_env() -> dict[str, str]:
+    """子 Python(内嵌 pip/compileall)管道输出走 locale 编码,中文 Windows(GBK)下
+    错误信息会 mojibake(errors='replace' 只防崩不防乱码)——强制 UTF-8 模式。"""
+    return {**os.environ, 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'}
 
 
 def install_command(
@@ -66,7 +73,9 @@ def install_project(
         pyembed_python, project_dir, dist_name=dist_name, extra_requirements=extra_requirements, uv_path=uv_path
     )
     l.info("pyshade.packager: 安装项目进内嵌解释器({} 模式)", 'uv' if uv_path else 'pip')
-    result = subprocess.run(command, capture_output=True, encoding='utf-8', errors='replace', timeout=1800)
+    result = subprocess.run(
+        command, capture_output=True, encoding='utf-8', errors='replace', timeout=1800, env=_utf8_env()
+    )
     if result.returncode != 0:
         raise PyembedInstallError(
             f"依赖安装失败(exit {result.returncode}):\n{(result.stderr or result.stdout or '').strip()[-4000:]}\n"
@@ -104,6 +113,7 @@ def compile_bytecode(pyembed_python: Path) -> None:
         encoding='utf-8',
         errors='replace',
         timeout=1800,
+        env=_utf8_env(),
     )
     if result.returncode != 0:
         tail = (result.stderr or result.stdout or '').strip()[-1000:]

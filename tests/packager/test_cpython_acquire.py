@@ -23,7 +23,11 @@ from pyshade.packager._cpython import (
 _IS_WINDOWS = platform.system().lower() == 'windows'
 
 
-def _fake_pyembed_tarball(*, evil_member: str | None = None) -> bytes:
+def _fake_pyembed_tarball(
+    *,
+    evil_member: str | None = None,
+    extra_infos: tuple[tarfile.TarInfo, ...] = (),
+) -> bytes:
     """内含 python/<解释器> 的最小 tarball(与 PBS install_only 布局同形)。"""
     interpreter = 'python/python.exe' if _IS_WINDOWS else 'python/bin/python3'
     buffer = io.BytesIO()
@@ -36,6 +40,8 @@ def _fake_pyembed_tarball(*, evil_member: str | None = None) -> bytes:
             info = tarfile.TarInfo(evil_member)
             info.size = 4
             tar.addfile(info, io.BytesIO(b'evil'))
+        for info in extra_infos:
+            tar.addfile(info)
     return buffer.getvalue()
 
 
@@ -175,6 +181,87 @@ class TestExtract:
         tarball = tmp_path / 'evil.tar.gz'
         tarball.write_bytes(_fake_pyembed_tarball(evil_member='outside.txt'))
         with pytest.raises(CpythonAcquireError, match='预期外成员'):
+            extract_pyembed(tarball, tmp_path / 'pyembed')
+
+    def test_dotdot_inside_whitelist_rejected(self, tmp_path: Path) -> None:
+        # startswith('python/') 拦不住的形态:白名单漏洞的定点回归
+        tarball = tmp_path / 'evil.tar.gz'
+        tarball.write_bytes(_fake_pyembed_tarball(evil_member='python/../../evil.txt'))
+        with pytest.raises(CpythonAcquireError, match='路径逃逸'):
+            extract_pyembed(tarball, tmp_path / 'pyembed')
+
+    def test_device_member_rejected(self, tmp_path: Path) -> None:
+        device = tarfile.TarInfo('python/dev-null')
+        device.type = tarfile.CHRTYPE
+        tarball = tmp_path / 'evil.tar.gz'
+        tarball.write_bytes(_fake_pyembed_tarball(extra_infos=(device,)))
+        with pytest.raises(CpythonAcquireError, match='设备/FIFO'):
+            extract_pyembed(tarball, tmp_path / 'pyembed')
+
+    def test_escaping_symlink_rejected(self, tmp_path: Path) -> None:
+        link = tarfile.TarInfo('python/lib/escape')
+        link.type = tarfile.SYMTYPE
+        link.linkname = '../../outside'
+        tarball = tmp_path / 'evil.tar.gz'
+        tarball.write_bytes(_fake_pyembed_tarball(extra_infos=(link,)))
+        with pytest.raises(CpythonAcquireError, match='之外'):
+            extract_pyembed(tarball, tmp_path / 'pyembed')
+
+    def test_absolute_symlink_rejected(self, tmp_path: Path) -> None:
+        link = tarfile.TarInfo('python/lib/abs')
+        link.type = tarfile.SYMTYPE
+        link.linkname = '/etc/passwd'
+        tarball = tmp_path / 'evil.tar.gz'
+        tarball.write_bytes(_fake_pyembed_tarball(extra_infos=(link,)))
+        with pytest.raises(CpythonAcquireError, match='之外'):
+            extract_pyembed(tarball, tmp_path / 'pyembed')
+
+    @pytest.mark.skipif(_IS_WINDOWS, reason='symlink 落盘需要 unix')
+    def test_internal_symlink_allowed(self, tmp_path: Path) -> None:
+        link = tarfile.TarInfo('python/bin/python')
+        link.type = tarfile.SYMTYPE
+        link.linkname = 'python3'  # PBS unix 布局的真实形态
+        tarball = tmp_path / 'ok.tar.gz'
+        tarball.write_bytes(_fake_pyembed_tarball(extra_infos=(link,)))
+        pyembed = tmp_path / 'pyembed'
+        extract_pyembed(tarball, pyembed)
+        assert (pyembed / 'python' / 'bin' / 'python').is_symlink()
+
+    @pytest.mark.filterwarnings('ignore::DeprecationWarning')  # 3.12+ 对无 filter 的 extractall 告警:此处刻意模拟老 API
+    def test_legacy_python_without_tar_filter(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """PEP 706 兼容:3.10.0-3.10.11/3.11.0-3.11.3 无 filter 参数(传入即 TypeError)。
+
+        spy 复刻老签名(收到 filter kwarg 即抛),比 delattr(tarfile, 'data_filter') 更强。
+        """
+        monkeypatch.setattr(_cpython, '_tar_supports_filter', lambda: False)
+        original = tarfile.TarFile.extractall
+
+        def legacy_extractall(self: tarfile.TarFile, *args: object, **kwargs: object) -> None:
+            if 'filter' in kwargs:
+                raise TypeError("extractall() got an unexpected keyword argument 'filter'")
+            original(self, *args, **kwargs)  # pyright: ignore[reportArgumentType]
+
+        monkeypatch.setattr(tarfile.TarFile, 'extractall', legacy_extractall)
+
+        tarball = tmp_path / 'cpython.tar.gz'
+        tarball.write_bytes(_fake_pyembed_tarball())
+        pyembed = tmp_path / 'pyembed'
+        python = extract_pyembed(tarball, pyembed)  # 正常包解压成功
+        assert python.read_bytes() == b'fake-python'
+
+        evil = tmp_path / 'evil.tar.gz'
+        evil.write_bytes(_fake_pyembed_tarball(evil_member='python/../../evil.txt'))
+        with pytest.raises(CpythonAcquireError, match='路径逃逸'):  # 恶意包照样被前置校验拦下
+            extract_pyembed(evil, tmp_path / 'pyembed2')
+
+    def test_disk_error_wrapped(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        def boom(self: tarfile.TarFile, *args: object, **kwargs: object) -> None:
+            raise OSError("disk full")
+
+        monkeypatch.setattr(tarfile.TarFile, 'extractall', boom)
+        tarball = tmp_path / 'cpython.tar.gz'
+        tarball.write_bytes(_fake_pyembed_tarball())
+        with pytest.raises(CpythonAcquireError, match='解压失败'):
             extract_pyembed(tarball, tmp_path / 'pyembed')
 
     def test_missing_stamp_returns_none(self, tmp_path: Path) -> None:

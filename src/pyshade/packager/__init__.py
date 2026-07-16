@@ -117,7 +117,10 @@ def collect_artifacts(bundle_root: Path, out_dir: Path) -> list[Path]:
             if entry.is_dir():
                 if dest.exists():
                     shutil.rmtree(dest)
-                shutil.copytree(entry, dest)
+                # symlinks=True:macOS .app 的 Frameworks/Versions 符号链接结构必须保真——
+                # 解引用会膨胀体积且 code signature 的 sealed resources 记录的是 symlink,
+                # 拷贝件校验必失败;悬空链接在此模式下按链接原样复制,不抛 shutil.Error
+                shutil.copytree(entry, dest, symlinks=True)
             else:
                 shutil.copy2(entry, dest)
             collected.append(dest)

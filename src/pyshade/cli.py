@@ -75,6 +75,7 @@ def _init(args: argparse.Namespace) -> None:
             package=args.package,
             product_name=args.product_name,
             identifier=args.identifier,
+            version=args.version,
             force=args.force,
         )
     except ScaffoldError as exc:
@@ -130,6 +131,11 @@ def main() -> None:
     init_parser.add_argument('--package', default=None, help='src 布局下的包名(src/ 下多包时必填)')
     init_parser.add_argument('--product-name', default=None, help='安装包产品名(缺省读 Tauri.toml 或用发行名)')
     init_parser.add_argument('--identifier', default=None, help='应用标识(如 cn.example.myapp;缺省读 Tauri.toml)')
+    init_parser.add_argument(
+        '--version',
+        default=None,
+        help='安装包版本(主.次.修 三段式;pyproject version 为 dynamic 或非 semver 时必填)',
+    )
     init_parser.add_argument('--force', action='store_true', help='覆盖已存在的文件')
 
     package_parser = sub.add_parser('package', help='standalone 打包:便携 CPython + cargo-tauri 出安装包')

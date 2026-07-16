@@ -67,5 +67,7 @@ def run_serve(spec: str, *, host: str = '127.0.0.1', port: int = 8000, workdir: 
     fastapi_app = build_fastapi_app(registry, title=app.title)
     dispatcher = make_web_asgi(fastapi_app, dist)
     l.info("pyshade serve: http://{}:{}(单进程;多客户端共享 ServerState,design.md §3.10)", host, port)
-    uvicorn.run(dispatcher, host=host, port=port, log_level='info', lifespan='on')
+    # timeout_graceful_shutdown=3:/_shade/push SSE 常驻不关,默认 None 会让 Ctrl+C 无限等
+    # "Waiting for connections to close"(须二次强杀);3s 给普通短请求收尾,SSE 客户端重连收敛
+    uvicorn.run(dispatcher, host=host, port=port, log_level='info', lifespan='on', timeout_graceful_shutdown=3)
     return 0

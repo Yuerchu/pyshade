@@ -71,13 +71,30 @@ def supervise(
     command = worker_command(spec, port=port, workdir=workdir)
     active_watcher = watcher if watcher is not None else watch
     worker = spawner(command)
+    crash_reported = False
     l.info("pyshade dev: 监听 {}(Ctrl+C 退出)", [str(p) for p in watch_paths])
     try:
-        for changes in active_watcher(*watch_paths, watch_filter=PythonFilter()):
+        # rust_timeout+yield_on_timeout:每秒产出一次空集心跳,借此感知 worker 崩溃
+        # (端口占用/启动期异常此前静默——supervisor 空等文件变更,用户毫无提示)
+        for changes in active_watcher(
+            *watch_paths, watch_filter=PythonFilter(), rust_timeout=1000, yield_on_timeout=True
+        ):
+            if not changes:  # 心跳帧
+                code = worker.poll()
+                if code is not None and not crash_reported:
+                    crash_reported = True
+                    l.error(
+                        "pyshade dev: worker 已退出(exit {});常见原因:端口 {} 被占用或启动期异常"
+                        "(错误见上方日志)→ 修复后保存源码即自动重启,或 Ctrl+C 退出",
+                        code,
+                        port,
+                    )
+                continue
             changed = sorted({Path(str(item[1])).name for item in changes})
             l.info("pyshade dev: 变更 {} → 重启 worker", changed)
             _terminate(worker)
             worker = spawner(command)
+            crash_reported = False
     except KeyboardInterrupt:
         pass
     finally:

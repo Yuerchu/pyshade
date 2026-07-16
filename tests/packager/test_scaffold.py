@@ -70,6 +70,69 @@ class TestInferParams:
             infer_params(project)
 
 
+class TestParamValidation:
+    """校验+报错(发版前审查):此前非法值静默渲染进 Cargo.toml/tauri.conf.json,
+    到 pyshade package 才由 cargo/tauri 报晦涩解析错。"""
+
+    def test_dynamic_version_rejected(self, tmp_path: Path) -> None:
+        project = _make_project(tmp_path)
+        (project / 'pyproject.toml').write_text(
+            '[project]\nname = "demo-app"\ndynamic = ["version"]\n', encoding='utf-8'
+        )
+        with pytest.raises(ScaffoldError, match='--version'):
+            infer_params(project)
+
+    def test_missing_version_rejected(self, tmp_path: Path) -> None:
+        project = _make_project(tmp_path)
+        (project / 'pyproject.toml').write_text('[project]\nname = "demo-app"\n', encoding='utf-8')
+        with pytest.raises(ScaffoldError, match='--version'):
+            infer_params(project)
+
+    def test_dev_version_rejected(self, tmp_path: Path) -> None:
+        project = _make_project(tmp_path, with_tauri_toml=False)
+        (project / 'pyproject.toml').write_text(
+            '[project]\nname = "demo-app"\nversion = "0.1.0.dev0"\n', encoding='utf-8'
+        )
+        with pytest.raises(ScaffoldError, match='semver'):
+            infer_params(project)
+
+    def test_version_override_wins(self, tmp_path: Path) -> None:
+        project = _make_project(tmp_path)
+        (project / 'pyproject.toml').write_text(
+            '[project]\nname = "demo-app"\ndynamic = ["version"]\n', encoding='utf-8'
+        )
+        params = infer_params(project, version='1.2.3')
+        assert params.version == '1.2.3'
+
+    def test_bad_crate_name_rejected(self, tmp_path: Path) -> None:
+        project = _make_project(tmp_path, with_tauri_toml=False)
+        (project / 'pyproject.toml').write_text('[project]\nname = "my.app"\nversion = "1.0.0"\n', encoding='utf-8')
+        with pytest.raises(ScaffoldError, match='cargo 包名'):
+            infer_params(project)
+
+    def test_product_name_with_quote_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(ScaffoldError, match='产品名'):
+            infer_params(_make_project(tmp_path), product_name='My "Cool" App')
+
+    def test_product_name_with_space_allowed(self, tmp_path: Path) -> None:
+        assert infer_params(_make_project(tmp_path), product_name='My App').product_name == 'My App'
+
+    def test_bad_identifier_rejected(self, tmp_path: Path) -> None:
+        with pytest.raises(ScaffoldError, match='identifier'):
+            infer_params(_make_project(tmp_path), identifier='no spaces "allowed"')
+
+    def test_window_title_with_quote_renders_valid_json(self, tmp_path: Path) -> None:
+        # 自由文本走 JSON 转义:title 含引号也要产出合法 tauri.conf.json
+        project = _make_project(tmp_path)
+        tauri_toml = (project / 'src' / 'demo_app' / 'Tauri.toml').read_text(encoding='utf-8')
+        (project / 'src' / 'demo_app' / 'Tauri.toml').write_text(
+            tauri_toml.replace('title = "Demo Window"', 'title = "Say \\"hi\\" 窗口"'), encoding='utf-8'
+        )
+        init_project(project)
+        conf = json.loads((project / 'src-tauri' / 'tauri.conf.json').read_text(encoding='utf-8'))
+        assert conf['app']['windows'][0]['title'] == 'Say "hi" 窗口'
+
+
 class TestInitProject:
     def test_generates_expected_tree(self, tmp_path: Path) -> None:
         project = _make_project(tmp_path)
