@@ -80,6 +80,29 @@ M1 落地形态:
   `PatchBus` → `GET /_shade/push` SSE。订阅先于快照、快照先于增量:merge 幂等,无需 patch 序号,
   重连即重收快照。SSE 跑在既有 ASGI 栈上,IPC 模式即一条常驻流式请求(Channel 帧),零新协议。
 
+发版前审查加固(M4 收尾,"输入必须校验、禁止静默失败"三原则的落地):
+
+- **`Update` 双重防线**:per-key 依次拒绝——事件字段、const、结构 prop(注解含 Component,组件树
+  编译期固定)、受控 prop(plain 受控值编译为 useState/defaultOpen 初始值,patch 无消费者)、
+  Expr/ServerRef 当前值、构建期 None 的可选 prop(`_opt_prop` 不发射 → 无 rt.ov 锚点)、
+  非 plain 新值(Expr/ServerRef/ClientAction/Component 进 payload 只会在序列化期 500)。
+  编译期直接消费、从不发 rt.ov 的 plain prop(TabItem/AccordionItem.value、Accordion.multiple、
+  Each.key、Button.submit、Text.muted、Skeleton.width/height、ScrollArea.height)标记
+  `_const_props` 复用 const 拒绝。
+- **事件 prop 的 action 声明防线**:ClientAction 定义了 `__call__`(误调用即抛),会满足
+  `Handler | None` 的 Callable 分支——EventSpec 的 core-schema 钩子在构造期拒绝赋给未声明
+  `| ClientAction` 的事件 prop(否则编译产物中绑定静默消失)。
+- **字符串上下文防线**:Expr/ServerRef 堵 `__str__`/`__format__`(`Text(f"{counter}")` 会静默
+  编出 repr 文本);`__repr__` 保留供调试。
+- **ServerState 类级防线**(metaclass):类级字段赋值/删除拒绝(会替换描述符,静默断掉校验与
+  auto-diff);带字段子类的再继承拒绝(建议组合,MRO 合并记 §6);用户模块开 PEP 563
+  (`from __future__ import annotations`)明确拒绝——注解全变字符串,PyShade 不解析。
+- **其他**:handler 必须是模块级 def(partial/类/可调用实例拒绝);Page 类体 Component 列表字段
+  拒绝(此前静默忽略);handler 返回裸 `Update` 报 500 并给 `return [Update(...)]` 指引;
+  PatchBus 在有订阅者时校验 publish 的事件循环归属(跨线程写 ServerState 抛 RuntimeError 而非
+  静默竞态);theme 护栏补 `/*`/`*/` 注释序列;wire meta header 非 ASCII 转 WireError
+  (invoke 必被应答)。
+
 M2 落地形态(组件铺量期的所有权决策):
 
 - **开合类 prop(Dialog/AlertDialog 的 `open`,Tabs 的 `value`)归客户端**:绑定 `ClientVal` 即受控
@@ -406,6 +429,8 @@ M0 是风险所在,M2 之后是体力活;先验证再铺量。
 - 运行时动态 markdown(ServerRef 驱动的内容,LLM 聊天类场景):当前 Markdown 是编译期
   const,动态化需要前端运行时渲染器,违背零运行时依赖,暂不做(§3.13)。
 - Image 与静态资产管线:bundle 三件套契约没有资产拷贝/寻址机制,Image 组件依赖它(§3.13)。
+- ServerState 字段继承:当前构造期明确拒绝带字段子类的再继承(§3.3 审查加固,建议组合);
+  支持路径是 `__init_subclass__` 走 MRO 合并字段 + 实例初始化/快照适配。
 
 已关闭的问题(结论回填正文):pytauri 成熟度评估 → 3.9;Python 打包工具选型 → 不用
 PyInstaller/Nuitka,走 python-build-standalone + Tauri bundler(3.9 / M3);流式协议设计 →

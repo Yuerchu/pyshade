@@ -82,6 +82,20 @@ class TestAnonymousComponents:
                 card = Card(Text('static'))
 
 
+class TestListFieldRejected:
+    def test_component_list_field_rejected(self) -> None:
+        with pytest.raises(LayoutError, match='Stack'):
+
+            class ListFieldPage(Page):
+                rows = [Text('a'), Text('b')]
+
+    def test_component_tuple_field_rejected(self) -> None:
+        with pytest.raises(LayoutError, match='Stack'):
+
+            class TupleFieldPage(Page):
+                rows = (Text('a'), Text('b'))
+
+
 class TestLayoutErrors:
     def test_single_parent_conflict(self) -> None:
         with pytest.raises(LayoutError, match='一个父容器'):

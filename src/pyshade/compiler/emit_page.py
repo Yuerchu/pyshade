@@ -195,9 +195,10 @@ def _opt_prop(node: NodeIR, name: str) -> PropInfo | None:
     """可选 prop(label/placeholder/title/description):普通值为 None 时不发射属性。
 
     `rt.ov(..., null)` 会撞上 shadcn 的 `string | undefined` 注解(tsc 报错)。
+    const 同样适用:Skeleton.width/height 标记 const 后 None 缺省仍不发射。
     """
     prop = next((p for p in node.props if p.name == name), None)
-    if prop is not None and prop.binding == 'plain' and prop.default_value is None:
+    if prop is not None and prop.binding in ('plain', 'const') and prop.default_value is None:
         return None
     return prop
 

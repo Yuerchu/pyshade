@@ -14,6 +14,7 @@ class TabItem(Component):
     """
 
     _shade_tag = 'TabItem'
+    _const_props = frozenset({'value'})  # 编译期用作 radix value/去重键,从不发 rt.ov
 
     label: str = Field(default='', description="Tab trigger label shown in the tab list.")
     value: str = Field(default='', description="Stable item identity for tab selection; defaults to the label.")

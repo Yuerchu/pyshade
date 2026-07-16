@@ -11,6 +11,7 @@ class ScrollArea(Component):
     """shadcn ScrollArea:固定高度滚动容器;height 为 CSS 长度字符串。"""
 
     _shade_tag = 'ScrollArea'
+    _const_props = frozenset({'height'})  # 编译期内联进 style,从不发 rt.ov
 
     height: str = Field(default='16rem', description="Fixed viewport height as a CSS length string (e.g. '16rem').")
     children: list[Component] = Field(default=[], description="Child components rendered inside the scroll viewport.")

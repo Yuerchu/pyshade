@@ -12,6 +12,8 @@
 from pydantic import BaseModel, ConfigDict, field_validator
 
 _FORBIDDEN_CHARS = frozenset(';{}\n\r')
+_FORBIDDEN_SEQUENCES = ('/*', '*/')
+"""注释序列单独按子串查:单个 `/` 是合法 CSS(如 oklch(0.7 0.1 200 / 50%)),不能进字符集。"""
 
 MODE_INDEPENDENT_TOKENS = frozenset({'radius'})
 """模式无关 token:emit 时进裸 :root 段,暗色块不重定义(对账测试同源消费)。"""
@@ -62,6 +64,8 @@ class ThemeTokens(BaseModel):
             raise ValueError("token 值不能为空串")
         if any(char in _FORBIDDEN_CHARS for char in stripped):
             raise ValueError("token 值含非法字符(; { } 或换行)——CSS 注入护栏")
+        if any(seq in stripped for seq in _FORBIDDEN_SEQUENCES):
+            raise ValueError("token 值含 CSS 注释序列(/* 或 */)——CSS 注入护栏")
         return stripped
 
 

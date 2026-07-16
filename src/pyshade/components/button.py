@@ -16,6 +16,7 @@ class Button(Component):
     """
 
     _shade_tag = 'Button'
+    _const_props = frozenset({'submit'})  # 编译期决定 collectValues 接线,从不发 rt.ov
 
     text: str = Field(default='', description="Button label; plain value (server-patchable).")
     variant: ButtonVariant = Field(

@@ -34,6 +34,18 @@ class TestThemeModel:
         with pytest.raises(ValidationError, match='注入护栏'):
             Theme(primary='red; } body { display: none')
 
+    def test_comment_sequence_rejected(self) -> None:
+        # 未闭合 /* 会吞掉后续整段样式,*/ 可提前闭合注入——两者都是护栏漏洞
+        with pytest.raises(ValidationError, match='注释序列'):
+            Theme(primary='red /* nothing')
+        with pytest.raises(ValidationError, match='注释序列'):
+            Theme(primary='*/ body red')
+
+    def test_slash_alone_allowed(self) -> None:
+        # 单个 / 是合法 CSS(oklch 透明度语法),不得误伤
+        theme = Theme(primary='oklch(0.7 0.1 200 / 50%)')
+        assert theme_tokens(theme) == {'primary': 'oklch(0.7 0.1 200 / 50%)'}
+
     def test_valid_values_pass_through(self) -> None:
         theme = Theme(primary='oklch(0.55 0.18 260)', border='#e5e5e5', radius='0.75rem', ring='var(--primary)')
         assert theme_tokens(theme) == {

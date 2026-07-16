@@ -87,6 +87,7 @@ class Each(Component, TemplateContainer):
     """
 
     _shade_tag = 'Each'
+    _const_props = frozenset({'key'})  # 编译期决定 React key 表达式,从不发 rt.ov
 
     items: ServerRef[Any] = Field(
         description="ServerState list field driving the template; replace the whole list to update.",

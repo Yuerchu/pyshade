@@ -5,12 +5,13 @@
 """
 
 from collections.abc import Callable
-from typing import Any, ClassVar, Generic, TypeVar, cast
+from typing import Any, ClassVar, Generic, TypeVar, cast, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, GetJsonSchemaHandler, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, GetCoreSchemaHandler, GetJsonSchemaHandler, PrivateAttr
 from pydantic.json_schema import JsonSchemaValue
-from pydantic_core import CoreSchema
+from pydantic_core import CoreSchema, core_schema
 
+from pyshade.actions import ClientAction
 from pyshade.expr import Expr
 from pyshade.state import ServerRef
 
@@ -30,6 +31,24 @@ class EventSpec:
 
     def __init__(self, kind: str) -> None:
         self.kind = kind
+
+    def __get_pydantic_core_schema__(self, source: Any, handler: GetCoreSchemaHandler) -> CoreSchema:
+        # 防线:ClientAction 定义了 __call__(误调用即抛),会满足 union 的 Callable(Handler)
+        # 分支——未声明 `| ClientAction` 的事件 prop 若被赋 action,编译产物中绑定会静默消失。
+        # 漏洞根源是 Callable 分支先吞掉值,ClientAction 自身的 schema 不被咨询,只能在此拦截:
+        # schema 构建期一次性算出该 union 声明的 action 类型,校验期拒绝未声明的 action。
+        allowed = tuple(m for m in get_args(source) if isinstance(m, type) and issubclass(m, ClientAction))
+        kind = self.kind
+
+        def _reject_undeclared_action(value: Any) -> Any:
+            if isinstance(value, ClientAction) and not (allowed and isinstance(value, allowed)):
+                raise ValueError(
+                    f"'{kind}' 事件 prop 未声明支持客户端 action,不能赋 {type(value).__name__};"
+                    "navigate()/set_color_scheme() 只能赋给注解含 ClientAction 的事件 prop(如 Button.on_click)"
+                )
+            return value
+
+        return core_schema.no_info_after_validator_function(_reject_undeclared_action, handler(source))
 
     def __get_pydantic_json_schema__(self, schema: CoreSchema, handler: GetJsonSchemaHandler) -> JsonSchemaValue:
         # 事件字段含 Callable(Handler),JSON schema 无法表达 → 整字段宽松占位,

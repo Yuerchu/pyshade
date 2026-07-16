@@ -9,13 +9,20 @@ import inspect
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, cast
+from typing import Any, cast, get_args
 
 from pydantic import BaseModel
 
 from pyshade.actions import ClientAction
 from pyshade.app import ShadeApp
-from pyshade.components.base import Component, EventSpec, Handler, const_props_of
+from pyshade.components.base import (
+    Component,
+    ControlledMixin,
+    EventSpec,
+    Handler,
+    const_props_of,
+    controlled_prop_of,
+)
 from pyshade.expr import Expr
 from pyshade.page import Page, anchor_of, iter_nodes
 from pyshade.state import ServerRef
@@ -40,8 +47,47 @@ class EventContext(BaseModel):
     item_key: str | int | None = None
 
 
+def _annotation_contains_component(annotation: object) -> bool:
+    """递归判断字段注解(union/list/嵌套泛型)是否含 Component 子类——结构 prop 判定。"""
+    if isinstance(annotation, type) and issubclass(annotation, Component):
+        return True
+    return any(_annotation_contains_component(arg) for arg in get_args(annotation))
+
+
+def _reject_non_plain_value(target: str, key: str, value: object) -> None:
+    """Update 新值必须是可 JSON 序列化的普通值:Expr/ServerRef/ClientAction/Component
+    都能通过 prop 注解的 union is-instance 校验,但进 payload 只会在序列化期 500
+    (且此时 ServerState 已变更、patch 全丢)——构造期拒绝。list/tuple 递归。
+    """
+    if isinstance(value, Expr):
+        raise ValueError(
+            f"{target}.{key} 的新值是客户端表达式(Expr),不能进入 Update payload;"
+            "Update 只接受可 JSON 序列化的普通值——客户端联动请把表达式直接绑定在组件 prop 上"
+        )
+    if isinstance(value, ServerRef):
+        raise ValueError(
+            f"{target}.{key} 的新值是 ServerState 字段引用({value.target}.{value.field});"
+            "请直接给该字段赋值(自动 diff),或传实例当前值(如 chat.status)"
+        )
+    if isinstance(value, ClientAction):
+        raise ValueError(
+            f"{target}.{key} 的新值是客户端 action({type(value).__name__}),"
+            "只能赋给事件 prop(如 on_click=),不能进入 Update payload"
+        )
+    if isinstance(value, Component):
+        raise ValueError(f"{target}.{key} 的新值是组件实例;组件树在编译期固定,不能通过 Update 传输")
+    if isinstance(value, (list, tuple)):
+        for item in cast('tuple[object, ...]', value):
+            _reject_non_plain_value(target, key, item)
+
+
 class Update:
-    """handler 返回值:目标组件的 props patch;构造时即校验键与类型。"""
+    """handler 返回值:目标组件的 props patch;构造时即校验键与类型。
+
+    per-key 防线顺序(每条都对应一种"200 响应但 UI 纹丝不动"的静默失败):
+    key 存在 → 事件字段 → const → 结构 prop → 受控 prop → Expr/ServerRef 当前值 →
+    构建期 None(无 rt.ov 锚点)→ 新值 plain → validate_assignment。
+    """
 
     def __init__(self, target: Component, **props: Any) -> None:
         self.target = anchor_of(target)  # 未挂 Page 时抛 LayoutError
@@ -66,6 +112,18 @@ class Update:
                     f"{self.target}.{key} 是构建期常量(编译期渲染进产物),不能 Update;"
                     "内容变更请修改 Python 源码后重新构建"
                 )
+            if _annotation_contains_component(fields[key].annotation):
+                raise ValueError(
+                    f"{self.target}.{key} 是子组件槽(结构 prop);组件树在编译期固定,不能 Update;"
+                    "动态列表请用 Each,显隐请用 visible"
+                )
+            if isinstance(target, ControlledMixin) and key == controlled_prop_of(target):
+                # plain 受控 prop 编译为 useState/defaultOpen 初始值,patch 无消费者;
+                # client_bind 情况同样不可 patch——统一按受控语义拒绝
+                raise ValueError(
+                    f"{self.target}.{key} 是受控 prop(所有权在客户端,编译为 useState/defaultOpen 初始值),"
+                    "不能通过 Update 修改;要读取当前值请在 handler 中用 ctx.value/ctx.values"
+                )
             current: object = getattr(target, key)
             if isinstance(current, Expr):
                 # 所有权公理(design.md §3.4):Expr 绑定的 prop 归客户端所有,服务端 patch 是编程错误
@@ -78,6 +136,13 @@ class Update:
                     f"{self.target}.{key} 已绑定 ServerState 字段({current.target}.{current.field}),"
                     "请直接给该字段赋值(自动 diff),不要用 Update"
                 )
+            if current is None:
+                # emit 的 _opt_prop 对构建期 None 的可选 prop 不发射元素 → 前端无 rt.ov 锚点
+                raise ValueError(
+                    f"{self.target}.{key} 构建期为 None,可选 prop 未编入前端产物(无 rt.ov 锚点),"
+                    "Update 无落点;需要运行时切换请在构造时提供初始值"
+                )
+            _reject_non_plain_value(self.target, key, value)
             validator.validate_assignment(probe, key, value)  # 类型不符抛 ValidationError
         self.props = props
 
@@ -100,6 +165,13 @@ def validate_handler(handler: Handler, *, owner: str) -> None:
 
     返回注解不在此校验(形态多样),交由用户侧 pyright 覆盖。
     """
+    if not inspect.isfunction(handler):
+        # functools.partial 无 __name__、可调用实例的 qualname 回落 ''、类的 qualname 无点——
+        # 全部能绕过下面的具名检查,这里按对象类型一票拒绝(async def 也是 function,不误伤)
+        raise EventHandlerError(
+            f"{owner} 的 handler 必须是模块级 def 函数(收到 {type(handler).__name__});"
+            "functools.partial/类/可调用实例无法被 EventRegistry 稳定重建,请定义模块级函数并在函数体内做定制"
+        )
     name = getattr(handler, '__name__', '')
     qualname = getattr(handler, '__qualname__', '')
     if name == '<lambda>':

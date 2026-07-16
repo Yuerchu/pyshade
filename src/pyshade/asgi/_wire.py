@@ -46,21 +46,30 @@ class RequestMeta:
     channel_id: str | None = None
 
 
+def _decode_ascii_meta(value: bytes, header_name: str) -> str:
+    """meta header 解码防线:非 ASCII 字节转 WireError,保证 invoke 必被应答
+    (裸 UnicodeDecodeError 会逃出 except WireError,resolver 悬空)。"""
+    try:
+        return value.decode('ascii')
+    except UnicodeDecodeError as exc:
+        raise WireError('bad_request_meta', f"{header_name} header is not valid ASCII") from exc
+
+
 def parse_request_meta(headers: Sequence[tuple[bytes, bytes]]) -> RequestMeta:
-    """解析 x-pyshade-* 元数据 headers;缺 method/path 抛 WireError('bad_request_meta')。"""
+    """解析 x-pyshade-* 元数据 headers;缺失/非 ASCII 抛 WireError('bad_request_meta')。"""
     method: str | None = None
     raw_path: bytes | None = None
     query_string = b''
     channel_id: str | None = None
     for key, value in headers:
         if key == H_METHOD and method is None:
-            method = value.decode('ascii')
+            method = _decode_ascii_meta(value, 'x-pyshade-method')
         elif key == H_PATH and raw_path is None:
             raw_path = value
         elif key == H_QUERY and not query_string:
             query_string = value
         elif key == H_CHANNEL and channel_id is None:
-            channel_id = value.decode('ascii')
+            channel_id = _decode_ascii_meta(value, 'x-pyshade-channel')
     if method is None:
         raise WireError('bad_request_meta', "missing x-pyshade-method header")
     if raw_path is None:

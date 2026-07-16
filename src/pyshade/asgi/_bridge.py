@@ -50,13 +50,18 @@ def build_http_scope(
     scheme 固定 "http":自定义 scheme 会破坏 Starlette 的 URL 构造与重定向,
     进程内 IPC 事实上比 https 更安全,此处是兼容性取舍。
     """
+    try:
+        path = unquote(meta.raw_path.decode('ascii'))
+    except UnicodeDecodeError as exc:
+        # 与 parse_request_meta 同属 meta 层防线:裸 UnicodeDecodeError 会让 invoke 永不 settle
+        raise WireError('bad_request_meta', "x-pyshade-path header is not valid ASCII") from exc
     scope: Scope = {
         'type': 'http',
         'asgi': {'version': '3.0', 'spec_version': '2.3'},
         'http_version': '1.1',
         'method': meta.method,
         'scheme': 'http',
-        'path': unquote(meta.raw_path.decode('ascii')),
+        'path': path,
         'raw_path': meta.raw_path,
         'query_string': meta.query_string,
         'root_path': '',
@@ -199,7 +204,11 @@ class RequestBridge:
         extensions: dict[str, Any] = {}
         if webview_window is not None:
             extensions['pyshade.ipc'] = {'webview_window': webview_window}
-        scope = build_http_scope(meta, headers, state=self._lifespan_state(), extensions=extensions)
+        try:
+            scope = build_http_scope(meta, headers, state=self._lifespan_state(), extensions=extensions)
+        except WireError as exc:
+            resolver.reject(encode_reject(exc.code, exc.message))
+            return
         receive = _make_receive(body, sink.disconnected)
 
         try:

@@ -14,7 +14,10 @@ Python:字段赋值即校验 + 自动 diff——事件请求内记入 contextvar
   必须走推送通道而非已定稿的响应。
 """
 
+import __future__ as _future  # 普通模块导入:仅取 feature 对象作身份比对,不激活 PEP 563
+
 import json
+import sys
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -34,6 +37,13 @@ SERVER_NAMESPACE_PREFIX = '$s:'
 
 class ServerStateError(Exception):
     """ServerState 类定义非法:缺默认值、默认值不可 JSON 序列化、类名冲突等。"""
+
+
+_REF_STR_HINT = (
+    "ServerRef 不能用于 f-string/str()(会把字段引用静默编成 repr 文本);"
+    "动态文本请在服务端用实例访问拼接(如 f'{chat.status}')再赋回 ServerState 字段,"
+    "或把字段引用直接绑定给组件 prop;调试请用 repr()"
+)
 
 
 class ServerRef(Generic[T]):
@@ -76,6 +86,13 @@ class ServerRef(Generic[T]):
     def __bool__(self) -> NoReturn:
         raise TypeError("ServerRef 不能用于布尔上下文;服务端逻辑请用实例访问(如 if chat.ready:)")
 
+    def __str__(self) -> NoReturn:
+        raise TypeError(_REF_STR_HINT)
+
+    def __format__(self, format_spec: str) -> NoReturn:
+        # 空 format spec 走 object.__format__ → str(),f-string 两条路都必须堵
+        raise TypeError(_REF_STR_HINT)
+
     def __repr__(self) -> str:
         return f'ServerRef({self.target}.{self.field}, default={self.default!r})'
 
@@ -102,7 +119,8 @@ class ServerField(Generic[T]):
 
     def __set__(self, obj: 'ServerState', value: T) -> None:
         validated = self.adapter.validate_python(value)  # 类型不符抛 ValidationError
-        obj.__dict__[self.name] = validated
+        # vars():metaclass 存在时 pyright 把 obj.__dict__ 推成 MappingProxyType,实际是普通实例 dict
+        vars(obj)[self.name] = validated
         _dispatch_dirty(self.ref, validated)
 
 
@@ -118,7 +136,30 @@ def _register_state_class(cls: 'type[ServerState]') -> None:
     _STATE_CLASSES[cls.__name__] = cls
 
 
-class ServerState:
+class _ServerStateMeta(type):
+    """拦截类级字段写入:`ChatState.status = x` 会整个替换 ServerField 描述符,
+    静默断掉校验与 auto-diff(数据描述符只管实例访问,唯有 metaclass 能拦类级赋值)。
+
+    时序:`__init_subclass__` 内 `setattr(cls, name, server_field)` 时本类的
+    `__shade_fields__` 尚未赋值,MRO 解析到基类的空 dict → 放行;类创建完成后
+    字段名即被冻结。`__shade_fields__` / `_instance` 等非字段属性不受影响。
+    """
+
+    def __setattr__(cls, name: str, value: object) -> None:
+        if name in getattr(cls, '__shade_fields__', {}):
+            raise ServerStateError(
+                f"{cls.__name__}.{name} 不支持类级赋值(会替换 ServerField 描述符,静默断掉校验与 auto-diff);"
+                f"请对单例实例赋值:先 state = {cls.__name__}(),再 state.{name} = ..."
+            )
+        super().__setattr__(name, value)
+
+    def __delattr__(cls, name: str) -> None:
+        if name in getattr(cls, '__shade_fields__', {}):
+            raise ServerStateError(f"{cls.__name__}.{name} 不支持删除字段描述符")
+        super().__delattr__(name)
+
+
+class ServerState(metaclass=_ServerStateMeta):
     """服务端状态基类:子类类体注解即字段(必须带 JSON 可序列化默认值),单例。
 
     非 BaseModel(描述符与 ModelMetaclass 冲突);字段校验用缓存 TypeAdapter。
@@ -129,11 +170,31 @@ class ServerState:
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
+        for base in cls.__mro__[1:]:
+            if base in (ServerState, object):
+                continue
+            if vars(base).get('__shade_fields__'):
+                raise ServerStateError(
+                    f"{cls.__name__} 继承了带字段的 ServerState 子类 {base.__name__};"
+                    "ServerState 暂不支持字段继承(实例初始化与 '$s:' 寻址按单类设计,"
+                    "继承字段会在实例访问时 KeyError),请改用组合:把共享字段拆成独立的 State 类"
+                )
         annotations = cast('dict[str, Any]', vars(cls).get('__annotations__', {}))
         fields: dict[str, ServerField[Any]] = {}
         for name, annotation in annotations.items():
             if name.startswith('_') or annotation is ClassVar or get_origin(annotation) is ClassVar:
                 continue
+            if isinstance(annotation, str):
+                module = sys.modules.get(cls.__module__)
+                if module is not None and getattr(module, 'annotations', None) is _future.annotations:
+                    raise ServerStateError(
+                        f"{cls.__name__}.{name} 的注解是字符串 {annotation!r}:PyShade 不支持 "
+                        f"'from __future__ import annotations'(PEP 563),请从模块 '{cls.__module__}' 移除该 import"
+                    )
+                raise ServerStateError(
+                    f"{cls.__name__}.{name} 的注解是字符串 {annotation!r}:"
+                    "请使用真实类型对象作注解(PyShade 不解析字符串注解)"
+                )
             if name not in vars(cls):
                 raise ServerStateError(
                     f"{cls.__name__}.{name} 缺少默认值;ServerState 字段必须提供默认值(前端快照的初始值)"
@@ -157,9 +218,9 @@ class ServerState:
         if cls._instance is not None:
             raise RuntimeError(f"{cls.__name__} 是单例,已在别处实例化;请 import 复用该实例")
         cls._instance = self
-        # 初始化只落值,不触发 dirty 分发(绕过描述符 __set__)
+        # 初始化只落值,不触发 dirty 分发(绕过描述符 __set__);vars() 同 __set__ 的 pyright 取舍
         for name, server_field in cls.__shade_fields__.items():
-            self.__dict__[name] = server_field.default
+            vars(self)[name] = server_field.default
 
 
 @dataclass

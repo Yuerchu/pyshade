@@ -1,5 +1,7 @@
 """M2 Wave 3 组件 DTO:槽语义、value 缺省、受控声明、敏感标记。"""
 
+import pytest
+
 from pyshade.components import (
     Accordion,
     AccordionItem,
@@ -14,6 +16,7 @@ from pyshade.components import (
 )
 from pyshade.components.base import ControlledMixin, controlled_prop_of, is_sensitive
 from pyshade.page import iter_children
+from pyshade.state import ServerState
 
 WAVE3 = (Dialog, AlertDialog, Tooltip, Tabs, TabItem, Accordion, AccordionItem, ScrollArea)
 
@@ -56,6 +59,16 @@ class TestWave3Dto:
     def test_accordion_item_value_defaults_to_title(self) -> None:
         assert AccordionItem('问题一').value == '问题一'
         assert AccordionItem('问题一', value='q1').value == 'q1'
+
+    def test_accordion_item_non_str_title_requires_value(self) -> None:
+        # 非 str title 落空串 value 会在编译期报"value 重复",错误指向用户没写过的东西
+        class FaqState(ServerState):
+            faq_title: str = '标题'
+
+        with pytest.raises(TypeError, match='显式提供 value'):
+            AccordionItem(FaqState.faq_title, Text('内容'))
+        item = AccordionItem(FaqState.faq_title, Text('内容'), value='faq-1')
+        assert item.value == 'faq-1'
 
     def test_tooltip_wraps_exactly_one_child(self) -> None:
         host = Button('宿主')

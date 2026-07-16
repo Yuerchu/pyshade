@@ -5,7 +5,7 @@
 """
 
 import inspect
-from typing import Any
+from typing import Any, cast
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import ValidationError
@@ -44,7 +44,13 @@ def mount_event_routes(app: FastAPI, registry: EventRegistry) -> None:
                 result = await result
         explicit: list[dict[str, Any]] = []
         if result is not None:
-            items: list[object] = list(result)
+            if not isinstance(result, (list, tuple)):
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"handler {handler_id} 返回了 {type(result).__name__},"
+                    "必须返回 list[Update | Navigate] 或 None;单个 patch 请写成 return [Update(...)]",
+                )
+            items: list[object] = list(cast('tuple[object, ...]', result))
             for item in items:
                 if isinstance(item, Update):
                     explicit.append(item.to_payload())

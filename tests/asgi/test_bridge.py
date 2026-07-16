@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from pyshade.asgi._bridge import RequestBridge
 from pyshade.asgi._types import ChannelLike
-from pyshade.asgi._wire import H_PATH, ResponseHead, decode_envelope
+from pyshade.asgi._wire import H_METHOD, H_PATH, ResponseHead, decode_envelope
 from tests.asgi.fakes import FakeChannel, FakeInvoke, FakeResolver, make_invoke
 
 pytestmark = pytest.mark.anyio
@@ -141,6 +141,31 @@ async def test_app_returning_without_response_synthesizes_500() -> None:
 async def test_missing_meta_header_rejected() -> None:
     bridge, _ = make_bridge(_build_app())
     resolver = FakeResolver({'body': b'', 'headers': [(H_PATH, b'/')], 'webview_window': None})
+    invoke = FakeInvoke('__pyshade_asgi__', resolver)
+    await bridge.handle_invoke(invoke)
+    assert resolver.resolved == []
+    assert len(resolver.rejected) == 1
+    payload = json.loads(resolver.rejected[0])
+    assert payload['code'] == 'bad_request_meta'
+
+
+async def test_non_ascii_path_header_rejected_not_hung() -> None:
+    # meta 层解码防线:裸 UnicodeDecodeError 会逃出 except WireError,invoke 永不 settle
+    bridge, _ = make_bridge(_build_app())
+    resolver = FakeResolver(
+        {'body': b'', 'headers': [(H_METHOD, b'GET'), (H_PATH, b'/caf\xc3\xa9')], 'webview_window': None}
+    )
+    invoke = FakeInvoke('__pyshade_asgi__', resolver)
+    await bridge.handle_invoke(invoke)
+    assert resolver.resolved == []
+    assert len(resolver.rejected) == 1
+    payload = json.loads(resolver.rejected[0])
+    assert payload['code'] == 'bad_request_meta'
+
+
+async def test_non_ascii_method_header_rejected_not_hung() -> None:
+    bridge, _ = make_bridge(_build_app())
+    resolver = FakeResolver({'body': b'', 'headers': [(H_METHOD, b'G\xc9T'), (H_PATH, b'/')], 'webview_window': None})
     invoke = FakeInvoke('__pyshade_asgi__', resolver)
     await bridge.handle_invoke(invoke)
     assert resolver.resolved == []

@@ -33,6 +33,35 @@ class TestBoolContext:
             not val  # pyright: ignore[reportGeneralTypeIssues, reportUnusedExpression]
 
 
+class TestStringContext:
+    """f-string/str()/format() 是"静默编出 repr 垃圾"的高频入口,必须构造期抛错。"""
+
+    def test_str_raises(self) -> None:
+        val = ClientVal(0)
+        with pytest.raises(TypeError, match='f-string'):
+            str(val)
+
+    def test_fstring_raises(self) -> None:
+        val = ClientVal(0)
+        with pytest.raises(TypeError, match='f-string'):
+            f'Count: {val}'  # noqa: B018
+
+    def test_format_builtin_raises(self) -> None:
+        val = ClientVal(0)
+        with pytest.raises(TypeError, match='f-string'):
+            format(val)
+
+    def test_str_format_method_raises(self) -> None:
+        val = ClientVal('x')
+        with pytest.raises(TypeError, match='f-string'):
+            '{}'.format(val)  # noqa: UP032
+
+    def test_repr_still_available(self) -> None:
+        val = ClientVal(0)
+        assert 'ClientVal' in repr(val)
+        assert 'ClientVal' in f'{val!r}'  # !r 走 __repr__,调试路径保留
+
+
 class TestContainerProtocols:
     def test_len_raises(self) -> None:
         # 定义了 __len__/__iter__/__contains__(抛错防线),静态层因此视为合法调用

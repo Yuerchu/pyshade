@@ -39,6 +39,12 @@ _BOOL_CONTEXT_HINT = (
     "测试中要取真值请用 expr.evaluate(snapshot)"
 )
 
+_STR_CONTEXT_HINT = (
+    "Expr 不能用于 f-string/str()/format()(会把表达式静默编成 repr 文本):"
+    "动态文本请用 + 拼接 str 表达式后绑定 prop(如 Text('状态:' + status));"
+    "调试请用 repr(),测试取值请用 expr.evaluate(snapshot)"
+)
+
 
 class ExprType(Enum):
     """表达式的构造期类型;JSON/JS 可表达的四种标量。"""
@@ -188,6 +194,13 @@ class Expr(Generic[T]):
 
     def __contains__(self, item: object) -> NoReturn:
         raise TypeError(f"Expr 不支持 in 成员判断;请用 == / != 组合,或移到服务端 handler。{_BOOL_CONTEXT_HINT}")
+
+    def __str__(self) -> NoReturn:
+        raise TypeError(_STR_CONTEXT_HINT)
+
+    def __format__(self, format_spec: str) -> NoReturn:
+        # 空 format spec 走 object.__format__ → str(),f-string 两条路都必须堵
+        raise TypeError(_STR_CONTEXT_HINT)
 
     # ---- 双端求值与依赖收集 ----
 

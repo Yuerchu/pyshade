@@ -11,6 +11,7 @@ class Text(Component):
     """纯文本显示;text 可为普通值(Update 可 patch)、str 表达式或 ServerState 字段。"""
 
     _shade_tag = 'Text'
+    _const_props = frozenset({'muted'})  # 编译期决定 className,从不发 rt.ov
 
     text: str | Expr[str] | ServerRef[str] = Field(
         default='',

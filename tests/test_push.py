@@ -9,6 +9,7 @@ from collections.abc import Generator
 from typing import Any
 
 import anyio
+import anyio.to_thread
 import httpx
 import pytest
 from httpx import ASGITransport
@@ -77,6 +78,19 @@ class TestPatchBus:
         with bus.subscribe():
             pass
         bus.publish({'target': '$s:X', 'props': {}})  # 不抛错
+
+    async def test_cross_thread_publish_with_subscribers_rejected(self) -> None:
+        bus = PatchBus()
+        patch: dict[str, Any] = {'target': '$s:X', 'props': {}}
+        with bus.subscribe():
+            with pytest.raises(RuntimeError, match='事件循环'):
+                await anyio.to_thread.run_sync(bus.publish, patch)
+
+    async def test_cross_thread_publish_without_subscribers_tolerated(self) -> None:
+        # 启动期主线程写状态是合法惯用法:无订阅者即 no-op,后续订阅经快照收敛
+        bus = PatchBus()
+        patch: dict[str, Any] = {'target': '$s:X', 'props': {}}
+        await anyio.to_thread.run_sync(bus.publish, patch)
 
 
 def _build_app() -> Any:

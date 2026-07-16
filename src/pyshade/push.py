@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from typing import Any
 
 import anyio
+import anyio.lowlevel
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -28,17 +29,36 @@ class PatchBus:
     """进程级 patch 扇出:请求外的 ServerState 变更广播给全部订阅者。
 
     慢消费者(缓冲区满)丢帧 + 告警——快照兜底保证重连后收敛,不阻塞发布方。
-    发布与订阅须在同一事件循环(portal loop)上,anyio memory stream 非线程安全。
+    发布与订阅须在同一事件循环(portal loop)上,anyio memory stream 非线程安全;
+    publish 在有订阅者时校验 loop 归属,跨线程/跨 loop 写 ServerState 构造期即抛
+    RuntimeError(而非静默竞态)。
     """
 
     def __init__(self) -> None:
         self._subscribers: list[MemoryObjectSendStream[dict[str, Any]]] = []
+        self._token: object | None = None
+        """首个订阅者进场时惰性绑定的事件循环 token;订阅清零后由下一个订阅者重绑。"""
 
     @property
     def subscriber_count(self) -> int:
         return len(self._subscribers)
 
     def publish(self, patch: dict[str, Any]) -> None:
+        # 有订阅者才校验 loop 归属:anyio memory stream 非线程安全,跨线程 send_nowait
+        # 是静默竞态;无订阅者时 publish 本就是 no-op,值已落 ServerState、后续订阅经
+        # 快照收敛(启动期主线程写状态是合法惯用法,不误伤)。
+        if self._subscribers:
+            try:
+                current: object | None = anyio.lowlevel.current_token()
+            except RuntimeError:  # sniffio.AsyncLibraryNotFoundError(RuntimeError 子类):纯同步线程
+                current = None
+            # 注意 ==:asyncio 后端每次调用返回新的 EventLoopToken 包装对象,按 loop 相等比较
+            if current != self._token:
+                raise RuntimeError(
+                    "ServerState 在应用事件循环之外(或另一事件循环)变更,无法安全推送给已连接的订阅者:"
+                    "请在事件 handler 或其 spawn 的任务内修改状态;"
+                    "外部线程请用 anyio.from_thread.run_sync(...) 把赋值切回事件循环"
+                )
         for send in list(self._subscribers):
             try:
                 send.send_nowait(patch)
@@ -54,6 +74,9 @@ class PatchBus:
 
     @contextmanager
     def subscribe(self) -> Generator[MemoryObjectReceiveStream[dict[str, Any]], None, None]:
+        if not self._subscribers:
+            # (重)绑定当前事件循环:覆盖测试/dev 重启换 loop 的场景
+            self._token = anyio.lowlevel.current_token()
         send, receive = anyio.create_memory_object_stream[dict[str, Any]](_SUBSCRIBER_BUFFER)
         self._subscribers.append(send)
         try:

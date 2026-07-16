@@ -174,6 +174,15 @@ class Page:
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
+        for name, value in vars(cls).items():
+            if isinstance(value, (list, tuple)) and any(
+                isinstance(item, Component) for item in cast('tuple[object, ...]', value)
+            ):
+                # 列表字段不进收集流程,静默忽略会让用户对着空白页毫无线索——构造期拒绝
+                raise LayoutError(
+                    f"{cls.__name__}.{name} 是 Component 列表;Page 类体字段只识别单个组件实例,"
+                    "请用容器组件包裹(如 Stack(*items) / Card(*items)),数据驱动的列表请用 Each"
+                )
         named_vals = cast(
             'list[tuple[str, ClientVal[Any]]]',
             [(name, value) for name, value in vars(cls).items() if isinstance(value, ClientVal)],

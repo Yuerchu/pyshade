@@ -115,6 +115,16 @@ class TestRequestMeta:
         meta = parse_request_meta([(H_METHOD, b'GET'), (H_METHOD, b'POST'), (H_PATH, b'/')])
         assert meta.method == 'GET'
 
+    def test_non_ascii_method_rejected(self) -> None:
+        with pytest.raises(WireError) as exc_info:
+            parse_request_meta([(H_METHOD, b'P\xffST'), (H_PATH, b'/')])
+        assert exc_info.value.code == 'bad_request_meta'
+
+    def test_non_ascii_channel_rejected(self) -> None:
+        with pytest.raises(WireError) as exc_info:
+            parse_request_meta([(H_METHOD, b'GET'), (H_PATH, b'/'), (H_CHANNEL, b'\xff')])
+        assert exc_info.value.code == 'bad_request_meta'
+
 
 class TestStripWireHeaders:
     def test_strips_all_wire_headers(self) -> None:
