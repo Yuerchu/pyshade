@@ -22,6 +22,8 @@ export interface ShadeRuntimeStore {
   resolvedDark: boolean;
   /** "toggle" 按当前解析结果取反并落为显式选择;"system" 清除显式选择。 */
   setColorScheme: (mode: ColorSchemeMode | "toggle") => void;
+  /** push 订阅断连中(重连退避期);无 push 订阅时恒 false。Connection Lost 徽标据此渲染。 */
+  connectionLost: boolean;
 }
 
 /** 无 Provider(单页挂载/单测)时为 null,usePageRuntime 回落页面本地 store。 */

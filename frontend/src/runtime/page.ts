@@ -64,7 +64,9 @@ export function usePageRuntime(options?: PageRuntimeOptions): PageRuntime {
     if (!pushEnabled) {
       return;
     }
-    // StrictMode 双挂载安全:cleanup 取消订阅,重连循环随之终止
+    // StrictMode 双挂载安全:cleanup 取消订阅,重连循环随之终止。
+    // 回落路径不渲染 Connection Lost 徽标(单页挂载/单测形态;fixed 定位会逃逸容器,
+    // testkit 双 Provider 同 document 会串扰)——生成的 App 恒有 Provider,徽标归 App 层。
     return subscribePatches(applyPatches);
   }, [pushEnabled, applyPatches]);
 

@@ -40,6 +40,8 @@ interface ShadeAppProviderProps {
   deepLink?: boolean;
   /** 默认配色(= ShadeApp.color_scheme);localStorage 显式选择优先于此值。 */
   colorScheme?: ColorSchemeMode;
+  /** 非公开 API:push 传输层注入口(testkit 断流仿真用),生成的 app.gen.tsx 恒不传。 */
+  pushFetch?: (path: string) => Promise<Response>;
   children: ReactNode;
 }
 
@@ -50,6 +52,7 @@ export function ShadeAppProvider({
   pageNames,
   deepLink,
   colorScheme,
+  pushFetch,
   children,
 }: ShadeAppProviderProps) {
   const linkEnabled = deepLink ?? false;
@@ -148,14 +151,19 @@ export function ShadeAppProvider({
     [bound, navigateTo],
   );
 
+  // 断连指示:无 push 订阅的应用状态恒 false,永不渲染徽标
+  const [connectionLost, setConnectionLost] = useState(false);
   const pushEnabled = push ?? false;
   useEffect(() => {
     if (!pushEnabled) {
       return;
     }
     // StrictMode 双挂载安全:cleanup 取消订阅,重连循环随之终止
-    return subscribePatches(applyPatches);
-  }, [pushEnabled, applyPatches]);
+    return subscribePatches(applyPatches, {
+      onStatus: (status) => setConnectionLost(status === "disconnected"),
+      fetchImpl: pushFetch,
+    });
+  }, [pushEnabled, applyPatches, pushFetch]);
 
   const store = useMemo<ShadeRuntimeStore>(
     () => ({
@@ -167,11 +175,27 @@ export function ShadeAppProvider({
       colorScheme: scheme,
       resolvedDark,
       setColorScheme,
+      connectionLost,
     }),
-    [overrides, applyPatches, navigateTo, currentPage, visitedPages, scheme, resolvedDark, setColorScheme],
+    [overrides, applyPatches, navigateTo, currentPage, visitedPages, scheme, resolvedDark, setColorScheme, connectionLost],
   );
 
-  return <ShadeRuntimeContext.Provider value={store}>{children}</ShadeRuntimeContext.Provider>;
+  return (
+    <ShadeRuntimeContext.Provider value={store}>
+      {children}
+      {pushEnabled && connectionLost ? (
+        <div
+          id="pyshade-connection-lost"
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-xs font-medium text-destructive shadow-lg"
+        >
+          <span className="size-2 animate-pulse rounded-full bg-destructive" />
+          Connection lost
+        </div>
+      ) : null}
+    </ShadeRuntimeContext.Provider>
+  );
 }
 
 export function ShadeRouter({ pages, keepAlive }: { pages: Record<string, ComponentType>; keepAlive?: boolean }) {

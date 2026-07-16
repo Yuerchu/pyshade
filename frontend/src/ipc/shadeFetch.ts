@@ -108,6 +108,13 @@ async function ipcFetch(path: string, init: ShadeFetchInit): Promise<Response> {
       buffered.length = 0;
       sink = feed;
     },
+    cancel() {
+      // 消费者取消后 Channel 帧仍会到达:置空 sink,否则对已关流 enqueue 抛 TypeError。
+      // Python 侧订阅者滞留是协议缺口(无上行 cancel 帧,design.md §6);PatchBus 缓冲满
+      // 断流是其兜底。
+      sink = () => undefined;
+      buffered.length = 0;
+    },
   });
   return toResponse(head.status, head.headers, stream);
 }

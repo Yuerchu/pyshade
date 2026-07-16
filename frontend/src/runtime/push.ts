@@ -36,45 +36,76 @@ function feedEvent(rawEvent: string, onPatches: (patches: Patch[]) => void): voi
   }
 }
 
-/** 订阅服务端 patch 推送;返回取消函数(React effect cleanup 直接可用)。 */
-export function subscribePatches(onPatches: (patches: Patch[]) => void): () => void {
+export type PushStatus = "connected" | "disconnected";
+
+export interface SubscribeOptions {
+  /** 连接状态变化回调(去重:仅状态翻转时触发;首次连接失败也触发;取消后不再触发)。 */
+  onStatus?: (status: PushStatus) => void;
+  /** 传输层注入口(默认 shadeFetch);testkit 断流仿真用,生成代码恒不传。 */
+  fetchImpl?: (path: string) => Promise<Response>;
+}
+
+/** 订阅服务端 patch 推送;返回取消函数(React effect cleanup 直接可用)。
+ *
+ * 取消对 idle 流同样生效:挂起的 reader.read() 被 reader.cancel() 打断(HTTP 模式
+ * 即中止 fetch、释放服务端订阅席位),退避等待被立即唤醒后循环退出。
+ */
+export function subscribePatches(onPatches: (patches: Patch[]) => void, options?: SubscribeOptions): () => void {
   if (typeof window !== "undefined") {
     window.__PYSHADE_PUSH_SUBSCRIBE_COUNT__ = (window.__PYSHADE_PUSH_SUBSCRIBE_COUNT__ ?? 0) + 1;
   }
+  const fetchImpl = options?.fetchImpl ?? shadeFetch;
   let cancelled = false;
   let retryMs = INITIAL_RETRY_MS;
+  let activeReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  let wakeRetry: (() => void) | null = null;
+  let lastStatus: PushStatus | null = null;
+
+  const emitStatus = (status: PushStatus): void => {
+    if (cancelled || status === lastStatus) {
+      return;
+    }
+    lastStatus = status;
+    options?.onStatus?.(status);
+  };
 
   const consume = async (body: ReadableStream<Uint8Array>): Promise<void> => {
     const reader = body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (cancelled) {
-        void reader.cancel();
-        return;
+    activeReader = reader;
+    try {
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (cancelled) {
+          void reader.cancel().catch(() => undefined);
+          return;
+        }
+        if (done) {
+          return;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        let boundary = buffer.indexOf("\n\n");
+        while (boundary !== -1) {
+          feedEvent(buffer.slice(0, boundary), onPatches);
+          buffer = buffer.slice(boundary + 2);
+          boundary = buffer.indexOf("\n\n");
+        }
+        retryMs = INITIAL_RETRY_MS; // 有数据到达即视为链路健康
       }
-      if (done) {
-        return;
-      }
-      buffer += decoder.decode(value, { stream: true });
-      let boundary = buffer.indexOf("\n\n");
-      while (boundary !== -1) {
-        feedEvent(buffer.slice(0, boundary), onPatches);
-        buffer = buffer.slice(boundary + 2);
-        boundary = buffer.indexOf("\n\n");
-      }
-      retryMs = INITIAL_RETRY_MS; // 有数据到达即视为链路健康
+    } finally {
+      activeReader = null;
     }
   };
 
   const loop = async (): Promise<void> => {
     while (!cancelled) {
       try {
-        const res = await shadeFetch("/_shade/push");
+        const res = await fetchImpl("/_shade/push");
         if (!res.ok || res.body === null) {
           throw new Error(`push subscribe failed: ${res.status}`);
         }
+        emitStatus("connected");
         await consume(res.body);
       } catch (err) {
         if (!cancelled) {
@@ -84,7 +115,12 @@ export function subscribePatches(onPatches: (patches: Patch[]) => void): () => v
       if (cancelled) {
         return;
       }
-      await new Promise((resolve) => setTimeout(resolve, retryMs));
+      emitStatus("disconnected");
+      await new Promise<void>((resolve) => {
+        wakeRetry = resolve;
+        setTimeout(resolve, retryMs);
+      });
+      wakeRetry = null;
       retryMs = Math.min(retryMs * 2, MAX_RETRY_MS);
     }
   };
@@ -92,5 +128,7 @@ export function subscribePatches(onPatches: (patches: Patch[]) => void): () => v
   void loop();
   return () => {
     cancelled = true;
+    void activeReader?.cancel().catch(() => undefined);
+    wakeRetry?.();
   };
 }

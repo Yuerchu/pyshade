@@ -150,7 +150,12 @@ class _ResponseSink:
     def abort(self, code: str, message: str) -> None:
         """流式中止:发 ERROR 帧并终结。"""
         if self._channel is not None and not self.done:
-            self._channel.send(encode_error_frame(code, message))
+            try:
+                self._channel.send(encode_error_frame(code, message))
+            except Exception:
+                # 窗口已毁时 channel.send 自身会抛:abort 常在异常路径被调,二次抛错会在
+                # handle_invoke 兜底日志里叠出误导性的双 traceback——降级为单条 warning
+                l.warning("pyshade.asgi: ERROR 帧投递失败(channel 已销毁),中止流: {}", code)
         self.done = True
         self.disconnected.set()
 

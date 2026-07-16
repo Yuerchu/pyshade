@@ -20,6 +20,7 @@ from typing import Any
 from anyio.from_thread import start_blocking_portal
 from fastapi import FastAPI
 from loguru import logger as l
+from pydantic import ValidationError
 
 from pyshade.asgi import AsgiIpcAdapter
 from pyshade.testing._collector import ReportCollector
@@ -29,6 +30,24 @@ from pyshade.testing._routes import mount_test_routes
 
 _CLOSE_GRACE_S = 15.0
 _OBSERVE_AFTER_CLOSE_S = 5.0
+
+
+def cases_from_raw(raw_cases: list[Any]) -> list[CaseResult]:
+    """JS 回传的 case 逐条校验:一条坏数据不炸掉整份报告(降级为 error case,verdict 必红)。"""
+    out: list[CaseResult] = []
+    for item in raw_cases:
+        try:
+            out.append(CaseResult.model_validate(item))
+        except ValidationError:
+            out.append(
+                CaseResult(
+                    id='harness.invalid_case',
+                    status='error',
+                    source='python',
+                    detail={'raw': repr(item)[:500]},
+                )
+            )
+    return out
 
 
 class NativeHarness:
@@ -98,19 +117,33 @@ class NativeHarness:
                 )
                 self._app_handle.exit(1)
                 return
-            window = Manager.get_webview_window(self._app_handle, self._config.window_label)
-            if window is not None:
-                try:
+            try:
+                # 整段包 try:get_webview_window 自身抛异常会杀死 injector 线程,
+                # hello 超时的 exit(1) 兜底随之断链 → run_return 永久阻塞
+                window = Manager.get_webview_window(self._app_handle, self._config.window_label)
+                if window is not None:
                     title = window.title()
                     if title.startswith('PYSHADE_TESTKIT_ERROR'):
                         l.warning("pyshade.testing: 页面侧 runner 报错: {}", title)
                     window.eval(inject_js)
-                except Exception as exc:
-                    l.warning("pyshade.testing: eval 注入失败,重试中: {}", exc)
+            except Exception as exc:
+                l.warning("pyshade.testing: eval 注入失败,重试中: {}", exc)
 
     def _watcher(self) -> None:
         if not self.collector.hello.wait(self._config.hello_timeout + 5.0):
-            return  # injector 已处理超时退出
+            # 常规路径 injector 已 exit(1);若 injector 线程先于兜底死亡(不可预期异常),
+            # 这里必须自兜底,否则无人退出 Tauri loop → run_return 永久阻塞
+            if not any(case.id == 'harness.hello_timeout' for case in self.collector.python_cases):
+                self.collector.add_python_case(
+                    CaseResult(
+                        id='harness.hello_timeout_watchdog',
+                        status='error',
+                        source='python',
+                        detail={'hint': "injector 线程未完成超时处理(可能已异常退出),watcher 兜底退出"},
+                    )
+                )
+            self._app_handle.exit(1)
+            return
         if not self.collector.report.wait(self._config.total_timeout):
             self.collector.add_python_case(
                 CaseResult(
@@ -214,7 +247,7 @@ class NativeHarness:
         )
         raw = self.collector.raw_report
         if raw is not None:
-            report.cases.extend(CaseResult.model_validate(c) for c in raw.get('cases', []))
+            report.cases.extend(cases_from_raw(raw.get('cases', [])))
         elif not self.collector.python_cases:
             report.cases.append(
                 CaseResult(id='harness.no_report', status='error', source='python', detail={'hint': "页面未回传报告"})

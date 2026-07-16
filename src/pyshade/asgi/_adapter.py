@@ -51,6 +51,10 @@ class AsgiIpcAdapter:
             bind_parameters=_BIND_PARAMETERS,
         )
 
+    def _admit(self) -> bool:
+        """请求准入(gate 与入册后复查共用;独立方法便于测试注入竞态时序)。"""
+        return self._ready
+
     def invoke_handler(self, fallback: InvokeHandler | None = None) -> InvokeHandler:
         """生成传给 `BuilderArgs.invoke_handler` 的回调;不抛异常、不阻塞(pytauri 硬约束)。
 
@@ -61,12 +65,17 @@ class AsgiIpcAdapter:
         def handler(invoke: InvokeLike) -> None:
             try:
                 if invoke.command == ASGI_COMMAND:
-                    if not self._ready:
+                    if not self._admit():
                         invoke.reject(encode_reject('app_not_ready', "application startup has not completed"))
                         return
                     future = self._portal.start_task_soon(self._bridge.handle_invoke, invoke)
                     self._pending.add(future)
                     future.add_done_callback(self._pending.discard)
+                    if not self._admit():
+                        # TOCTOU 窗口:过了前闸后 shutdown 才置 False → 扫尾快照可能不含
+                        # 本 future(错过取消轮);add 先于本次复查,复查见 True 则扫尾必含。
+                        # 漏网的开放式流(SSE)会让 portal 退出永久挂死,必须自我取消。
+                        future.cancel()
                 elif fallback is not None:
                     fallback(invoke)
                 else:

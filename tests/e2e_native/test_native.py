@@ -73,5 +73,11 @@ def test_theme_color_scheme(native_report: TestReport) -> None:
     assert case.status == 'pass', case.model_dump()
 
 
+def test_push_connection_lost(native_report: TestReport) -> None:
+    """断连指示:push 断流 → 左下角徽标出现;重连成功 → 消失;取消后重连循环终止。"""
+    case = _case(native_report, 'push.connection_lost')
+    assert case.status == 'pass', case.model_dump()
+
+
 def test_overall_verdict(native_report: TestReport) -> None:
     assert native_report.ok, native_report.to_markdown()

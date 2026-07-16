@@ -5,6 +5,7 @@
  */
 
 import { shadeFetch } from "@/ipc/shadeFetch";
+import { suitePushConnectionLost } from "./suites/connection";
 import { suiteEmptyBody } from "./suites/emptyBody";
 import { suiteHeaders } from "./suites/headers";
 import { suitePayload } from "./suites/payload";
@@ -28,6 +29,7 @@ const BUILTIN_SUITES: [string, SuiteFn][] = [
   ["routing.keep_alive", suiteRoutingKeepAlive],
   ["routing.deep_link", suiteRoutingDeepLink],
   ["theme.color_scheme", suiteColorScheme],
+  ["push.connection_lost", suitePushConnectionLost],
   ["spa.each_click", suiteSpaEachClick],
   ["spa.navigate", suiteSpaNavigate],
 ];

@@ -58,6 +58,9 @@ def main() -> int:
         wanted |= classes_from(golden, attr_only=True)
     for ui in (REPO / 'frontend' / 'src' / 'components' / 'ui').glob('*.tsx'):
         wanted |= classes_from(ui, attr_only=False)
+    # runtime 自有 UI(Connection Lost 徽标等):className 必须保持纯字符串字面量,此处对账
+    for rt in (REPO / 'frontend' / 'src' / 'runtime').glob('*.tsx'):
+        wanted |= classes_from(rt, attr_only=True)
 
     # 过滤明显非 class 的 token(import 路径、变量名等混入)
     candidates = {c for c in wanted if _TOKEN_OK.match(c) and not c.startswith(('@', './', '../', 'react'))}

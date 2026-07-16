@@ -129,6 +129,46 @@ def test_lifespan_exit_cancels_open_ended_stream() -> None:
     assert generator_cancelled.is_set()
 
 
+def test_admit_race_self_cancels_inflight_request() -> None:
+    """TOCTOU 窗口:handler 过了 _admit 前闸后 shutdown 才置 False → 扫尾快照不含本
+    future,开放式流永不结束 → portal 退出挂死。入册后复查必须自我取消兜住。"""
+    generator_cancelled = threading.Event()
+    app = FastAPI()
+
+    @app.get('/endless')
+    async def endless() -> StreamingResponse:
+        async def gen() -> AsyncGenerator[bytes, None]:
+            try:
+                while True:
+                    yield b'data: ping\n\n'
+                    await anyio.sleep(3600)
+            finally:
+                generator_cancelled.set()
+
+        return StreamingResponse(gen(), media_type='text/event-stream')
+
+    class _RacingAdmitAdapter(AsgiIpcAdapter):
+        """脚本化 _admit:前闸放行、入册后复查见 shutdown(复刻竞态时序)。"""
+
+        script: list[bool] = [True, False]
+
+        def _admit(self) -> bool:
+            if self.script:
+                return self.script.pop(0)
+            return self._ready
+
+    with start_blocking_portal('asyncio') as portal:
+        adapter = _RacingAdmitAdapter(app, portal, channel_factory=_fake_channel_factory)
+        handler = adapter.invoke_handler()
+        with adapter.lifespan():
+            invoke = make_invoke('GET', '/endless')
+            handler(invoke)
+            # 复查见 False → future.cancel();扫尾轮不依赖它,pending 自行清空
+            _wait_for(lambda: not adapter._pending)  # pyright: ignore[reportPrivateUsage]
+        # portal 正常退出不挂死(本测试能跑完即是断言)
+    assert generator_cancelled.is_set() or not adapter._pending  # pyright: ignore[reportPrivateUsage]
+
+
 def test_startup_failure_propagates_and_cleans_up() -> None:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:

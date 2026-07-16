@@ -106,3 +106,38 @@ async def test_stream_without_channel_is_rejected() -> None:
     payload = json.loads(invoke.resolver.rejected[0])
     assert payload['code'] == 'bad_request_meta'
     assert channels == []
+
+
+class _DeadChannel(FakeChannel):
+    """首帧后即"窗口销毁":后续 send 一律抛错(复刻真机关窗行为)。"""
+
+    def send(self, data: str | bytes) -> None:
+        if self.sent:
+            raise RuntimeError("channel destroyed")
+        super().send(data)
+
+
+async def test_abort_on_dead_channel_no_double_traceback() -> None:
+    """abort 里的 ERROR 帧投递失败不得二次抛错(否则 handle_invoke 兜底日志出现
+    误导性的 'unhandled error in request pipeline' 双 traceback)。"""
+    from loguru import logger as l
+
+    app = _build_app()
+    channels: list[_DeadChannel] = []
+
+    def factory(channel_id: str, webview_window: Any) -> ChannelLike:
+        channel = _DeadChannel()
+        channels.append(channel)
+        return channel
+
+    bridge = RequestBridge(app, channel_factory=factory, lifespan_state=lambda: None, bind_parameters={})
+    captured: list[str] = []
+    sink_id = l.add(lambda message: captured.append(str(message)), level='WARNING')
+    try:
+        invoke = make_invoke('GET', '/stream-error')
+        await bridge.handle_invoke(invoke)  # 不抛(handle_invoke 硬约束)
+    finally:
+        l.remove(sink_id)
+
+    assert not any('unhandled error in request pipeline' in m for m in captured)
+    assert any('ERROR 帧投递失败' in m for m in captured)

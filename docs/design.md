@@ -79,6 +79,8 @@ M1 落地形态:
   (后台任务——sink 带 closed 标志,spawn 任务继承的 contextvar 快照按已关闭处理)交给
   `PatchBus` → `GET /_shade/push` SSE。订阅先于快照、快照先于增量:merge 幂等,无需 patch 序号,
   重连即重收快照。SSE 跑在既有 ASGI 栈上,IPC 模式即一条常驻流式请求(Channel 帧),零新协议。
+  慢消费者(缓冲区满)**断流强制重连**而非丢帧(丢掉的可能恰是终态帧,而前端只在流断开时才
+  重连拿快照);断连期间 App Provider 在左下角渲染 "Connection lost" 徽标(§3.11)。
 
 发版前审查加固(M4 收尾,"输入必须校验、禁止静默失败"三原则的落地):
 
@@ -265,6 +267,12 @@ M2 落地形态(组件铺量期的所有权决策):
   初始页 = `pages[0]`),骨架是手写 runtime(`ShadeAppProvider` + `ShadeRouter`)。overrides 提升
   App 级——服务端 `Update` 不因切页蒸发;push 订阅提升 App 层——切页不断连、他页停留时后台推送不丢。
   `usePageRuntime` 双模式:有 Provider 消费共享 store,无 Provider(单页挂载/单测)回落页面本地。
+- **断连指示(发版前审查加固)**:push 订阅断流/重连退避期间,Provider 在左下角渲染
+  `#pyshade-connection-lost` 徽标("Connection lost",既有 --destructive/--background token,
+  暗色自动翻转;role=status/aria-live=polite),重连成功(快照到达)即消失;无 push 订阅的应用
+  永不渲染。无 Provider 回落路径**不渲染**(单页挂载/单测形态;fixed 定位会逃逸容器,testkit
+  双 Provider 同 document 会串扰)。取消订阅对 idle 流真正生效(reader.cancel() 中止 fetch、
+  释放服务端席位;退避等待被立即唤醒)。
 - **页面状态默认 unmount 即丢**:ClientVal/受控输入随页面卸载重置,跨页数据的正门是 ServerState。
   **keep-alive(M3 已落地)**:`ShadeApp(keep_alive=True)` 时访问过的页面保持挂载
   (display:none 包裹,不用 React `<Activity>`——语义可预期,Activity 记升级路径),
@@ -431,6 +439,9 @@ M0 是风险所在,M2 之后是体力活;先验证再铺量。
 - Image 与静态资产管线:bundle 三件套契约没有资产拷贝/寻址机制,Image 组件依赖它(§3.13)。
 - ServerState 字段继承:当前构造期明确拒绝带字段子类的再继承(§3.3 审查加固,建议组合);
   支持路径是 `__init_subclass__` 走 MRO 合并字段 + 实例初始化/快照适配。
+- IPC 流式响应的客户端取消不通知 Python 侧:PSA1 无上行 cancel 帧,webview 重载/订阅取消后
+  push 订阅者滞留,直到缓冲满被 PatchBus 断流(§3.3 兜底)或进程退出;上行 cancel 帧是候选
+  协议扩展(0x10-0x1F 保留位)。
 
 已关闭的问题(结论回填正文):pytauri 成熟度评估 → 3.9;Python 打包工具选型 → 不用
 PyInstaller/Nuitka,走 python-build-standalone + Tauri bundler(3.9 / M3);流式协议设计 →

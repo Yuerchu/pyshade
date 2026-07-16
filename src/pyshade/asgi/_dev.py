@@ -5,6 +5,7 @@ AsgiIpcAdapter 统一驱动(uvicorn lifespan="off"),避免 lifespan state 跨 lo
 生产路径不 import 本模块。
 """
 
+from concurrent.futures import Future
 from dataclasses import dataclass
 from typing import Any
 
@@ -50,7 +51,22 @@ class DevHttpServer:
         )
         self._server = uvicorn.Server(cfg)
         self._server.config.setup_event_loop = lambda: None
-        self._portal.start_task_soon(self._server.serve)
+        future = self._portal.start_task_soon(self._server.serve)
+        port = self._config.port
+
+        def _report(f: 'Future[None]') -> None:
+            # start_task_soon 的 future 无人 await:启动失败(端口占用等)不检查就是静默失败,
+            # 用户只看到上面那条误导性的 "dev HTTP server: http://..." info 日志
+            if f.cancelled():
+                return
+            try:
+                exc = f.exception()
+            except BaseException as raised:  # noqa: BLE001  # SystemExit 等 BaseException 也要报出来
+                exc = raised
+            if exc is not None:
+                l.opt(exception=exc).error("pyshade dev HTTP server 启动/运行失败(端口 {} 被占用?)", port)
+
+        future.add_done_callback(_report)
         l.info("pyshade dev HTTP server: http://{}:{}", self._config.host, self._config.port)
 
     def stop(self) -> None:

@@ -28,7 +28,8 @@ _SUBSCRIBER_BUFFER = 64
 class PatchBus:
     """进程级 patch 扇出:请求外的 ServerState 变更广播给全部订阅者。
 
-    慢消费者(缓冲区满)丢帧 + 告警——快照兜底保证重连后收敛,不阻塞发布方。
+    慢消费者(缓冲区满)断流 + 告警——强制该订阅者重连,重连快照补齐终态,不阻塞发布方
+    (丢帧不可静默:丢掉的可能恰是终态帧,而前端只在流断开时才重连)。
     发布与订阅须在同一事件循环(portal loop)上,anyio memory stream 非线程安全;
     publish 在有订阅者时校验 loop 归属,跨线程/跨 loop 写 ServerState 构造期即抛
     RuntimeError(而非静默竞态)。
@@ -63,10 +64,15 @@ class PatchBus:
             try:
                 send.send_nowait(patch)
             except anyio.WouldBlock:
+                # 丢帧不可静默:丢掉的可能恰是终态帧,而前端只在流断开时才重连拿快照——
+                # 关闭该订阅者的发送端强制其 SSE 终结(缓冲内已入队消息仍可 drain),
+                # 前端重连后先收全量快照,merge 幂等收敛;期间 UI 显示 Connection lost
+                if send in self._subscribers:
+                    self._subscribers.remove(send)
+                send.close()
                 l.warning(
-                    "pyshade.push: 订阅者缓冲区满({}),丢弃 patch {};重连快照会补齐终态",
+                    "pyshade.push: 订阅者缓冲区满({}),关闭该订阅流强制重连;快照会补齐终态",
                     _SUBSCRIBER_BUFFER,
-                    patch.get('target'),
                 )
             except (anyio.ClosedResourceError, anyio.BrokenResourceError):
                 if send in self._subscribers:

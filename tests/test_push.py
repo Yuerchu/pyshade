@@ -59,19 +59,42 @@ class TestPatchBus:
             assert second.receive_nowait() == patch
         assert bus.subscriber_count == 0
 
-    async def test_slow_subscriber_drops_without_blocking(self) -> None:
+    async def test_slow_subscriber_disconnected_not_dropped(self) -> None:
+        # 溢出语义:断流强制重连(丢帧不可静默——丢掉的可能恰是终态帧,前端只在断流时重连)
         bus = PatchBus()
         with bus.subscribe() as receiver:
             for i in range(200):  # 远超缓冲区 64,发布方不得阻塞或抛错
                 bus.publish({'target': '$s:X', 'props': {'i': i}})
+            assert bus.subscriber_count == 0  # 溢出者已被请出场
             drained: list[dict[str, Any]] = []
             while True:
                 try:
                     drained.append(receiver.receive_nowait())
                 except anyio.WouldBlock:
+                    raise AssertionError("溢出后应收到 EndOfStream(断流),而非静默丢帧后流依旧存活") from None
+                except anyio.EndOfStream:
                     break
-            assert len(drained) == 64
+            assert len(drained) == 64  # 缓冲内已入队消息仍可 drain
             assert drained[0]['props'] == {'i': 0}
+
+    async def test_overflow_then_context_exit_is_safe(self) -> None:
+        # 溢出关闭发送端后,subscribe() 上下文正常退出不抛(close 幂等 / remove 防重)
+        bus = PatchBus()
+        with bus.subscribe():
+            for i in range(70):
+                bus.publish({'target': '$s:X', 'props': {'i': i}})
+        assert bus.subscriber_count == 0
+
+    async def test_sse_generator_terminates_on_overflow(self) -> None:
+        # 断流即 SSE 终结:订阅端 async for 收 EndOfStream 正常退出(前端由此触发重连快照)
+        bus = PatchBus()
+        received: list[dict[str, Any]] = []
+        with bus.subscribe() as receiver:
+            for i in range(70):
+                bus.publish({'target': '$s:X', 'props': {'i': i}})
+            async for patch in receiver:
+                received.append(patch)
+        assert len(received) == 64
 
     async def test_publish_after_unsubscribe_is_noop(self) -> None:
         bus = PatchBus()
