@@ -46,6 +46,12 @@ class TestAppShape:
         assert not missing, f"缺组件页:{sorted(missing)}"
         assert {'HomePage', 'ComponentsPage', 'QuickstartPage'} <= page_names
 
+    def test_html_lang_per_locale(self) -> None:
+        # index.html 的 <html lang>:此前硬编码 zh-CN,en 站声明错语言
+        assert make_app('en').lang == 'en'
+        assert make_app('zh').lang == 'zh-CN'
+        assert make_app('en').title == 'PyShade Docs'
+
     def test_mock_handlers_match_registry(self) -> None:
         registry = EventRegistry.from_app(make_app('zh'))
         pattern = re.compile(r'"([A-Za-z]+Page\.[A-Za-z0-9_]+\.[a-z_]+)":')

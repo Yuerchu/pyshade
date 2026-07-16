@@ -154,7 +154,7 @@ def bundle_app(
         from pyshade.compiler.emit_theme import emit_theme_css
 
         theme_css = emit_theme_css(app.theme)
-    write_static(out, assets, theme_css=theme_css, color_scheme=app.color_scheme)
+    write_static(out, assets, theme_css=theme_css, color_scheme=app.color_scheme, title=app.title, lang=app.lang)
 
     duration = (time.monotonic() - started) * 1000
     size = outfile.stat().st_size

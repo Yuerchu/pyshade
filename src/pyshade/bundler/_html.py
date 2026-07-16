@@ -7,12 +7,28 @@
   (dist 保持三件套契约,后到者按 CSS 层叠规则覆盖)。
 """
 
+import re
 import shutil
+from html import escape as html_escape
 from pathlib import Path
 
 from pyshade.bundler._assets import FrontendAssets
 
 _STYLE_LINK = '<link rel="stylesheet" href="./style.css" />'
+
+_TITLE_RE = re.compile(r'<title>.*?</title>', flags=re.DOTALL)
+_LANG_RE = re.compile(r'(<html\b[^>]*\blang=")[^"]*(")')
+
+
+def set_title(html: str, title: str) -> str:
+    """<title> 替换为 ShadeApp.title(HTML 转义):此前恒为模板的 "pyshade app"。"""
+    return _TITLE_RE.sub(f'<title>{html_escape(title)}</title>', html, count=1)
+
+
+def set_lang(html: str, lang: str) -> str:
+    """<html lang> 替换为 ShadeApp.lang(构造期已按 BCP 47 校验):此前硬编码 zh-CN。"""
+    return _LANG_RE.sub(rf'\g<1>{lang}\g<2>', html, count=1)
+
 
 _DEFAULT_DARK_JS = {
     'system': 's !== "light" && (s === "dark" || matchMedia("(prefers-color-scheme: dark)").matches)',
@@ -54,8 +70,12 @@ def write_static(
     *,
     theme_css: str | None = None,
     color_scheme: str = 'system',
+    title: str = 'PyShade App',
+    lang: str = 'en',
 ) -> None:
     html = assets.index_html.read_text(encoding='utf-8')
+    html = set_title(html, title)
+    html = set_lang(html, lang)
     html = inject_scheme_boot(html, color_scheme)
     if theme_css is not None:
         html = inject_theme_style(html, theme_css)

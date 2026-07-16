@@ -10,6 +10,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# 最小权限:全程跑第三方 action 与依赖代码,默认 token 不该有写权
+permissions:
+  contents: read
+
 env:
   # Windows runner 默认 cp1252,中文输出会 UnicodeEncodeError
   PYTHONUTF8: '1'
@@ -18,8 +22,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           python-version: '3.13'
@@ -44,14 +48,14 @@ jobs:
             python: '3.13'
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
       - run: uv sync --group dev --extra native --extra content
       - run: uv run pytest -q --junitxml=junit.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: junit-${{ matrix.os }}-${{ matrix.python }}
@@ -60,16 +64,16 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           python-version: '3.13'
       - run: uv sync --group dev --extra content
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
@@ -97,6 +101,12 @@ jobs:
         env:
           PYTHONPATH: docs_site/src
           PYSHADE_DOCS_LOCALE: en
+      # zh 的 markdown 在编译期渲染(mistune):不在 PR 期编译,坏内容要合入 main 后才在 docs.yml 炸
+      - name: Compile docs site (zh)
+        run: uv run pyshade build docs_site.app:app --out frontend/src/generated-docs-zh
+        env:
+          PYTHONPATH: docs_site/src
+          PYSHADE_DOCS_LOCALE: zh
       - name: Typecheck all generated output
         run: pnpm -C frontend typecheck
 
@@ -105,16 +115,16 @@ jobs:
   wheel-assets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           python-version: '3.13'
       - run: uv sync --group dev
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
@@ -130,11 +140,11 @@ jobs:
           PYSHADE_REQUIRE_FRONTEND_ASSETS: '1'
       - name: Assert wheel carries frontend assets
         run: uv run python scripts/assert_wheel_assets.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: pyshade-wheel
           path: dist/pyshade-*.whl
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: testkit-esbuild
           path: testkit-esbuild/testkit.js
@@ -145,16 +155,16 @@ jobs:
     needs: wheel-assets
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           python-version: '3.13'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: pyshade-wheel
           path: wheel-dist
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: testkit-esbuild
           path: testkit-esbuild
@@ -171,7 +181,7 @@ jobs:
           if (Get-Command node -ErrorAction SilentlyContinue) { Write-Error 'node 仍可执行'; exit 1 }
           if (Get-Command npm -ErrorAction SilentlyContinue) { Write-Error 'npm 仍可执行'; exit 1 }
           Write-Output 'node/npm 已剔除'
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~\AppData\Local\pyshade
           key: esbuild-${{ runner.os }}-${{ hashFiles('src/pyshade/bundler/_esbuild.py') }}
@@ -206,7 +216,7 @@ jobs:
           PYSHADE_E2E_BOARD_DIST: ${{ github.workspace }}/dist-board
           PYSHADE_E2E_TESTKIT: ${{ github.workspace }}/testkit-esbuild/testkit.js
           WEBVIEW2_USER_DATA_FOLDER: ${{ runner.temp }}/wv2-bundle
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: native-bundle-report
@@ -220,16 +230,18 @@ jobs:
     env:
       PYSHADE_CACHE_DIR: ${{ github.workspace }}/.pyshade-cache
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           python-version: '3.13'
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: taiki-e/install-action@v2
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable 分支头 2026-07
+        with:
+          toolchain: stable  # pin SHA 后 @ref 不再承载 toolchain 语义,必须显式
+      - uses: taiki-e/install-action@43aecc8d72668fbcfe75c31400bc4f890f1c5853 # v2
         with:
           tool: tauri-cli@2
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: pyshade-wheel
           path: wheel-dist
@@ -241,10 +253,10 @@ jobs:
       - name: Scaffold packaging project
         shell: bash
         run: .venv-pkg/Scripts/pyshade init --dir examples/task_board
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: examples/task_board/src-tauri
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .pyshade-cache/cpython
           key: cpython-${{ runner.os }}-${{ hashFiles('src/pyshade/packager/_cpython.py') }}
@@ -267,16 +279,16 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
           python-version: '3.13'
       - run: uv sync --group dev --extra native --extra content
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
@@ -299,7 +311,7 @@ jobs:
           if [ -f reports/native/report.md ]; then
             cat reports/native/report.md >> "$GITHUB_STEP_SUMMARY"
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: native-report

@@ -16,6 +16,7 @@ frontend/src/generated/
 frontend/src/generated-gallery/
 frontend/src/generated-board/
 frontend/src/generated-docs/
+frontend/src/generated-docs-zh/
 frontend/dist-testkit/
 
 # 零 Node 打包的发版产物与用户工作目录
@@ -37,3 +38,6 @@ reports/
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# 文档站本地构建产物
+dist-docs/

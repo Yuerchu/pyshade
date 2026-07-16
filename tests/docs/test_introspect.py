@@ -99,6 +99,48 @@ class TestFieldDocAnchors:
         assert 'server_ref' in entry.bindings
 
 
+class TestDisplayRecursion:
+    """_display_of 对嵌套注解的展开(此前 Annotated/参数化泛型静默退化为裸名,文档表失真)。"""
+
+    def test_annotated_stripped(self) -> None:
+        from typing import Annotated
+
+        from pydantic import Field
+
+        from pyshade.docs.introspect import _display_of  # pyright: ignore[reportPrivateUsage]
+
+        assert _display_of(Annotated[int, Field(gt=0)]) == 'int'
+        assert _display_of(Annotated[Annotated[str, Field()], Field()]) == 'str'  # 嵌套剥壳
+
+    def test_parameterized_generics_expanded(self) -> None:
+        from pyshade.docs.introspect import _display_of  # pyright: ignore[reportPrivateUsage]
+
+        assert _display_of(dict[str, int]) == 'dict[str, int]'
+        assert _display_of(tuple[int, ...]) == 'tuple[int, ...]'
+        assert _display_of(list[str]) == 'list[str]'
+
+    def test_union_inside_generic(self) -> None:
+        from pyshade.docs.introspect import _display_of  # pyright: ignore[reportPrivateUsage]
+
+        assert _display_of(list[int | None]) == 'list[int | None]'
+
+    def test_annotated_marker_member_detected(self) -> None:
+        from typing import Annotated
+
+        from pydantic import Field
+
+        from pyshade.docs.introspect import _render_field  # pyright: ignore[reportPrivateUsage]
+        from pyshade.state import ServerRef
+
+        class AnnotatedProbe(Component):
+            count: Annotated[int, Field(ge=0)] | ServerRef[int] = 0
+
+        info = AnnotatedProbe.model_fields['count']
+        doc = _render_field(AnnotatedProbe, 'count', info)
+        assert doc.type_display == 'int'  # 剥壳后本体
+        assert 'server_ref' in doc.bindings  # marker 检测不被 Annotated 外壳挡住
+
+
 class TestJsonSchemaSmoke:
     """M4 前置修复:含 Expr/ServerRef/ClientAction union 的模型 model_json_schema() 不再炸。"""
 

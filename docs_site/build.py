@@ -52,9 +52,21 @@ def _write(path: Path, text: str) -> None:
     path.write_text(text, encoding='utf-8', newline='\n')
 
 
+def clean_outputs(out: Path) -> None:
+    """只清理本脚本已知的构建产物子路径:删除/改名组件后旧 md 快照会残留成悬空文件,
+    被 LLM 爬到过期内容;其余(CNAME/_headers 等用户手放的文件)一概不动,防误删。"""
+    for name in (*LOCALES, 'llms.txt', 'llms-full.txt', 'index.html'):
+        target = out / name
+        if target.is_dir():
+            shutil.rmtree(target)
+        elif target.exists():
+            target.unlink()
+
+
 def build_site(out: Path, *, base_url: str, workdir: Path) -> None:
     docs = collect_components()
     out.mkdir(parents=True, exist_ok=True)
+    clean_outputs(out)
 
     for locale in LOCALES:
         locale_dir = out / locale

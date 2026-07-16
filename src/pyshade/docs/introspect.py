@@ -9,7 +9,7 @@ import types
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Literal, Union, cast, get_args, get_origin
+from typing import Annotated, Any, Literal, Union, cast, get_args, get_origin
 
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
@@ -46,21 +46,39 @@ class ComponentDoc:
     fields: tuple[FieldDoc, ...]
 
 
+def _strip_annotated(annotation: object) -> object:
+    """剥掉 Annotated 外壳(可嵌套):`Annotated[int, Field(gt=0)]` 的本体是 int。
+    此前静默退化为显示 'Annotated' 且标记检测失效。"""
+    while get_origin(annotation) is Annotated:
+        annotation = get_args(annotation)[0]
+    return annotation
+
+
 def _display_of(annotation: object) -> str:
-    """单个非标记注解成员的展示串(标量/Literal/Enum/list[Model]/兜底 __name__)。"""
+    """单个非标记注解成员的展示串(标量/Literal/Enum/泛型递归展开/兜底 __name__)。"""
+    annotation = _strip_annotated(annotation)
     scalar = _SCALAR_DISPLAY.get(annotation)
     if scalar is not None:
         return scalar
+    if annotation is type(None):
+        return 'None'
+    if annotation is Ellipsis:
+        return '...'  # tuple[int, ...] 的第二参
     origin = get_origin(annotation)
     if origin is Literal:
         return f'Literal[{", ".join(repr(arg) for arg in get_args(annotation))}]'
-    if origin is list:
-        (item,) = get_args(annotation) or (object,)
-        return f'list[{_display_of(item)}]'
+    if origin is Union or origin is types.UnionType:
+        return ' | '.join(_display_of(member) for member in get_args(annotation))
     if isinstance(annotation, type) and issubclass(annotation, Enum):
         return annotation.__name__
     if annotation is Any:
         return 'Any'
+    if origin is not None:
+        args = get_args(annotation)
+        if args:  # 参数化泛型递归展开:dict[str, int]/tuple[int, ...] 此前只显示裸 origin 名
+            origin_name = getattr(origin, '__name__', None)
+            display = origin_name if isinstance(origin_name, str) else str(origin)
+            return f'{display}[{", ".join(_display_of(arg) for arg in args)}]'
     plain = cast('object', annotation)  # issubclass 窄化残留 type[Unknown],收敛回 object
     fallback = getattr(plain, '__name__', None)
     return fallback if isinstance(fallback, str) else str(plain)
@@ -112,6 +130,7 @@ def _render_field(component: type[Component], name: str, info: FieldInfo) -> Fie
     bindings: list[Binding] = []
     plain_members: list[object] = []
     for member in members:
+        member = _strip_annotated(member)  # Annotated[ServerRef[int], ...] 类形态的标记检测须先剥壳
         if member is type(None):
             continue
         if _is_marker(member, ClientVal):

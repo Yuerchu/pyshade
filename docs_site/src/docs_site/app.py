@@ -11,9 +11,16 @@ from docs_site.i18n import LOCALES, Locale, t
 from docs_site.pages import all_pages
 from pyshade.app import ShadeApp
 
+_HTML_LANG: dict[Locale, str] = {'en': 'en', 'zh': 'zh-CN'}
+
 
 def make_app(locale: Locale) -> ShadeApp:
-    return ShadeApp(title=t('site_title', locale), pages=all_pages(locale), keep_alive=True)
+    return ShadeApp(
+        title=t('site_title', locale),
+        pages=all_pages(locale),
+        keep_alive=True,
+        lang=_HTML_LANG[locale],
+    )
 
 
 _env = os.environ.get('PYSHADE_DOCS_LOCALE', 'en')
