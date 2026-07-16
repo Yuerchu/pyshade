@@ -59,6 +59,11 @@ _JS_RESERVED = frozenset(
         'public',
         'static',
         'yield',
+        # ES module 下 await 保留;字面量不可作绑定名(import/const 位置直接语法错误)
+        'await',
+        'null',
+        'true',
+        'false',
     }
 )
 
@@ -88,6 +93,11 @@ def check_app(page_irs: list[PageIR]) -> None:
     for page_ir in page_irs:
         if page_ir.name in names:
             raise CompileError(f"页面类名 '{page_ir.name}' 重复:anchor/handlerId/路由均以类名为命名空间 → 请重命名")
+        if page_ir.name in _JS_RESERVED or not page_ir.name.isidentifier():
+            raise CompileError(
+                f"页面类名 '{page_ir.name}' 是 JS 保留字或非法标识符 → "
+                "页面名用作生成代码的函数名与 import 绑定,请重命名"
+            )
         names.add(page_ir.name)
     for page_ir in page_irs:
         for node in iter_node_irs(page_ir):
@@ -141,6 +151,12 @@ def _check_naming(node: NodeIR, page_name: str) -> None:
     local_name = parts[-1].split('[')[0] if '[' in parts[-1] else parts[-1]
     if local_name in _JS_RESERVED:
         raise CompileError(f"{node.anchor}: 字段名 '{local_name}' 是 JavaScript 保留字,请换个名字")
+    if not node.tag or not node.tag.isidentifier():
+        # 空 tag 此前静默发注释;非法 tag 可经 `*/` 越狱出 JSX 注释注入任意代码
+        raise CompileError(
+            f"{node.anchor}: 组件 {type(node.component).__name__} 的 _shade_tag {node.tag!r} 不是合法标识符 → "
+            "_shade_tag 用作生成代码的组件名,请设为类名形式(如 'MyWidget')"
+        )
 
 
 def _check_sensitive(node: NodeIR) -> None:
@@ -288,6 +304,16 @@ def _check_dialog(node: NodeIR) -> None:
             f"{node.anchor}.trigger: trigger 组件不得绑定 on_click(radix Trigger 接管点击,"
             "asChild 合并会双触发)→ 打开弹窗无需 handler,业务点击请放弹窗内的按钮"
         )
+    if trigger is not None and node.children:
+        # trigger 是首个标量槽(model_fields 声明序),进 no_guard_anchors 不发 guard——
+        # 非默认 visible 会被静默忽略,同 Tooltip 宿主规则
+        trigger_node = node.children[0]
+        trig_visible = next((p for p in trigger_node.props if p.name == 'visible'), None)
+        if trig_visible is not None and (trig_visible.binding != 'plain' or trig_visible.default_value is not True):
+            raise CompileError(
+                f"{trigger_node.anchor}: {node.tag} trigger 的 visible 必须保持默认 True(asChild 单元素约束)→ "
+                f"显隐控制请放到 {node.tag} 本身的 visible 上"
+            )
     open_prop = next(p for p in node.props if p.name == 'open')
     if trigger is None and open_prop.binding == 'plain' and open_prop.default_value is False:
         warnings.warn(
@@ -486,11 +512,41 @@ def _check_client_val_writers(page_ir: PageIR, state: _ExprState) -> None:
 
 
 def _check_var_collisions(page_ir: PageIR) -> None:
-    """ClientVal 字段名与匿名组件路径变量名(如 card_0)冲突时,生成的 useState 变量会重名。"""
+    """生成 JS 标识符的查重,按命名空间分池(避免 `Each foo` 与 `Input foo` 的合法共存被误报):
+
+    - V 池:useState 变量/setter(受控组件[非 client_bind]与 ClientVal)。键用首字母大写归一:
+      `foo` 与 `Foo` 的 setter 同为 setFooValue,必须视为冲突;
+    - E 池:Each 循环变量({base}Item/{base}Index);
+    - R 池:敏感输入 ref({base}Ref)。
+    """
+    from pyshade.components.base import ControlledMixin, controlled_prop_of
+
+    def claim(pool: dict[str, str], key: str, anchor: str) -> None:
+        other = pool.get(key)
+        if other is not None:
+            raise CompileError(
+                f"{page_ir.name}: {other} 与 {anchor} 生成的 JS 变量/setter 名冲突 → "
+                "请重命名其中一个字段(匿名组件请提为具名字段)"
+            )
+        pool[key] = anchor
+
     taken: dict[str, str] = {}
+    value_pool: dict[str, str] = {}
+    each_pool: dict[str, str] = {}
+    ref_pool: dict[str, str] = {}
     for node in iter_node_irs(page_ir):
         local = node.anchor.split('.')[-1].replace('[', '_').replace(']', '')
         taken[local] = node.anchor
+        component = node.component
+        if isinstance(component, ControlledMixin):
+            controlled = next((p for p in node.props if p.name == controlled_prop_of(component)), None)
+            if controlled is not None and controlled.binding != 'client_bind':
+                claim(value_pool, f'{local[:1].upper()}{local[1:]}', node.anchor)
+        if node.tag == 'Each':
+            claim(each_pool, local, node.anchor)
+        if node.sensitive:
+            claim(ref_pool, local, node.anchor)
     for name in page_ir.client_vals:
         if name in taken:
             raise CompileError(f"{page_ir.name}.{name}: ClientVal 与组件 {taken[name]} 生成的变量名冲突 → 请改名")
+        claim(value_pool, f'{name[:1].upper()}{name[1:]}', f'{page_ir.name}.{name}(ClientVal)')

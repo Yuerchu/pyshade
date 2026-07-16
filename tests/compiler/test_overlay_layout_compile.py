@@ -171,6 +171,14 @@ class TestWave3Checks:
         with pytest.raises(CompileError, match='不得绑定 on_click'):
             check_page_ir(build_page_ir(BadTriggerPage))
 
+    def test_dialog_trigger_visible_false_rejected(self) -> None:
+        # trigger 进 no_guard_anchors 不发 guard,非默认 visible 会被静默忽略(同 Tooltip 宿主规则)
+        class HiddenTriggerPage(Page):
+            dlg = Dialog(Text('内容'), trigger=Button('打开', visible=False), title='标题')
+
+        with pytest.raises(CompileError, match='visible 必须保持默认 True'):
+            check_page_ir(build_page_ir(HiddenTriggerPage))
+
     def test_unreachable_dialog_warns(self) -> None:
         class DeadDialogPage(Page):
             dlg = Dialog(Text('内容'), title='标题')

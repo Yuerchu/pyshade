@@ -146,7 +146,7 @@ class _PageEmitContext:
 
     def setter(self, node: NodeIR) -> str:
         base = self.alias.get(node.anchor) or _var_name(node.anchor)
-        return f'set{base.capitalize()}Value'
+        return _setter_name(base)
 
     def prop_js(self, node: NodeIR, prop: PropInfo) -> str:
         if prop.binding == 'const':
@@ -165,6 +165,12 @@ class _PageEmitContext:
 
 def _var_name(anchor: str) -> str:
     return anchor.split('.')[-1].replace('[', '_').replace(']', '')
+
+
+def _setter_name(base: str) -> str:
+    """useState setter 名:仅首字母大写。str.capitalize() 会小写掉其余字母
+    (userName → setUsernameValue),camelCase 字段的 setter 名会失真并可能撞名。"""
+    return f'set{base[:1].upper()}{base[1:]}Value'
 
 
 def _controlled_default(node: NodeIR) -> object:
@@ -261,7 +267,8 @@ def _emit_visible_guard(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> bo
         return True
     if ctx.loop is not None and visible_prop.binding == 'plain':
         return False  # 模板 plain visible 是构建期常量;checks 已保证其为 True
-    if visible_prop.binding == 'server_ref' or visible_prop.default_value is True:
+    if visible_prop.binding in ('server_ref', 'plain'):
+        # plain 一律发射(含 False):visible=False 默认隐藏且服务端 Update 可翻转(§3.3 普通值=服务端所有)
         w.line(f'{{{ctx.prop_js(node, visible_prop)} && (')
         w.indent()
         return True
@@ -1129,7 +1136,8 @@ def emit_each(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     guard_js: str | None = None
     if visible_prop.binding == 'expr':
         guard_js = f'({cast("Expr[Any]", visible_prop.default_value).to_js(ctx.scope)})'
-    elif visible_prop.binding == 'server_ref' or visible_prop.default_value is True:
+    elif visible_prop.binding in ('server_ref', 'plain'):
+        # plain 一律发射(含 False),与 _emit_visible_guard 同一决策
         guard_js = ctx.prop_js(node, visible_prop)
 
     def _has_events(candidate: NodeIR) -> bool:
@@ -1239,7 +1247,7 @@ def emit_page(page_ir: PageIR) -> str:
 
     for name, val in ctx.client_vals:
         ts_type = _TS_TYPE[val.type]
-        w.line(f'const [{name}Value, set{name.capitalize()}Value] = useState<{ts_type}>({js_value(val.default)});')
+        w.line(f'const [{name}Value, {_setter_name(name)}] = useState<{ts_type}>({js_value(val.default)});')
 
     for node in ctx.controlled_inputs:
         if node.anchor in ctx.alias:
@@ -1247,7 +1255,7 @@ def emit_page(page_ir: PageIR) -> str:
         var = _var_name(node.anchor)
         default_value = _controlled_default(node)
         ts_type = _TS_TYPE[_scalar_expr_type(default_value)]
-        w.line(f'const [{var}Value, set{var.capitalize()}Value] = useState<{ts_type}>({js_value(default_value)});')
+        w.line(f'const [{var}Value, {_setter_name(var)}] = useState<{ts_type}>({js_value(default_value)});')
 
     for node in ctx.sensitive_inputs:
         var = _var_name(node.anchor)

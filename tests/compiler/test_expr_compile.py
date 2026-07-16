@@ -233,6 +233,42 @@ class TestExprChecks:
         with pytest.raises(CompileError, match='变量名冲突'):
             check_page_ir(build_page_ir(CollisionPage))
 
+    def test_component_component_var_collision_rejected(self) -> None:
+        # 具名字段 card_0 与匿名 card[0](路径变量名同为 card_0)都生成 useState → 重复声明
+        class ComponentCollisionPage(Page):
+            card_0 = Input(label='具名')
+            card = Card(Input(label='匿名'), title='容器')
+
+        with pytest.raises(CompileError, match='JS 变量/setter 名冲突'):
+            check_page_ir(build_page_ir(ComponentCollisionPage))
+
+    def test_setter_case_collision_rejected(self) -> None:
+        # foo 与 Foo 的 setter 同为 setFooValue:仅首字母大小写差异也必须拒绝
+        class SetterCasePage(Page):
+            foo = Switch(label='a')
+            Foo = Switch(label='b')
+
+        with pytest.raises(CompileError, match='JS 变量/setter 名冲突'):
+            check_page_ir(build_page_ir(SetterCasePage))
+
+    def test_disjoint_pools_not_flagged(self) -> None:
+        # 同名 local 分属不同命名空间(box_0Ref vs box_0Value/setter):合法共存不误报
+        class PoolPage(Page):
+            box_0 = PasswordInput(label='密码')
+            box = Card(Input(label='匿名'), title='容器')
+
+        check_page_ir(build_page_ir(PoolPage))
+
+    def test_camel_case_setter_preserves_case(self) -> None:
+        class CamelPage(Page):
+            userName = ClientVal('')
+            box = Input(value=userName)
+
+        tsx = emit_page(build_page_ir(CamelPage))
+        # str.capitalize() 会产出 setUsernameValue(小写掉 N),丢失原名大小写
+        assert 'setUserNameValue' in tsx
+        assert 'setUsernameValue' not in tsx
+
 
 class TestSettingsGolden:
     def test_settings_page_tsx(self) -> None:

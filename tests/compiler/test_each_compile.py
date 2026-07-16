@@ -157,3 +157,13 @@ class TestEachChecks:
 
         with pytest.raises(CompileError, match='恒 False 无意义'):
             check_page_ir(build_page_ir(HiddenTemplatePage))
+
+    def test_each_plain_visible_false_guards_list(self) -> None:
+        # 模板外的 Each 自身 plain visible=False:发 guard,服务端 Update 可翻转
+        class HiddenListPage(Page):
+            tags = Each(EachChatState.tags, render=lambda tag: Text(tag), visible=False)
+
+        ir = build_page_ir(HiddenListPage)
+        check_page_ir(ir)
+        tsx = emit_page(ir)
+        assert '"visible", false) && rt.ov<string[]>' in tsx

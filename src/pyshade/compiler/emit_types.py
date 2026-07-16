@@ -1,9 +1,11 @@
 """types.gen.ts:枚举 → TS union;Each 项模型 → TS interface(设计 §3.5)。"""
 
+import json
 from enum import Enum
 
 from pydantic import BaseModel
 
+from pyshade.compiler.errors import CompileError
 from pyshade.compiler.ir import PageIR
 from pyshade.compiler.writer import TsxWriter
 
@@ -60,14 +62,28 @@ def emit_types(enums: list[type[Enum]], models: list[type[BaseModel]] | None = N
     w.line('/* 由 pyshade 编译器生成 — 请勿手改。 */')
     w.line()
     for enum_cls in enums:
-        members = [f'"{m.value}"' for m in enum_cls]
+        members: list[str] = []
+        for m in enum_cls:
+            if not isinstance(m.value, str):
+                raise CompileError(
+                    f"枚举 {enum_cls.__name__}.{m.name}: 值 {m.value!r} 不是 str → "
+                    "types.gen.ts 的 union 仅支持字符串枚举,请改用 str 枚举"
+                )
+            members.append(json.dumps(m.value, ensure_ascii=False))  # 引号/反斜杠转义
         w.line(f'export type {enum_cls.__name__} = {" | ".join(members)};')
         w.line()
     for model in models or []:
         w.line(f'export interface {model.__name__} {{')
         w.indent()
         for name, field in model.model_fields.items():
-            w.line(f'{name}: {_TS_SCALAR[field.annotation]};')
+            ts_type = _TS_SCALAR.get(field.annotation)
+            if ts_type is None:
+                # each.py 构造期已拦一层;此处是防御纵深(裸 KeyError 不给上下文)
+                raise CompileError(
+                    f"Each 项模型 {model.__name__}.{name}: 字段类型 {field.annotation!r} "
+                    "无法映射为 TS 标量(仅 bool/int/float/str)→ 请简化项模型字段"
+                )
+            w.line(f'{name}: {ts_type};')
         w.dedent()
         w.line('}')
         w.line()

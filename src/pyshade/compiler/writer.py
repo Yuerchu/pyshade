@@ -1,6 +1,9 @@
 """缩进感知的行发射器:输出恒 LF 的 TSX 源码。"""
 
 import json
+import math
+
+from pyshade.compiler.errors import CompileError
 
 
 class TsxWriter:
@@ -64,10 +67,18 @@ def js_value(value: object) -> str:
     if isinstance(value, Enum):
         return js_string(value.value)
     if isinstance(value, BaseModel):
-        return json.dumps(value.model_dump(mode='json'), ensure_ascii=False)
+        try:
+            return json.dumps(value.model_dump(mode='json'), ensure_ascii=False, allow_nan=False)
+        except ValueError as exc:
+            raise CompileError(f"js_value: 模型 {type(value).__name__} 含非有限浮点数,无法发射为 JS 字面量") from exc
     if isinstance(value, (list, tuple)):
         items = ', '.join(js_value(item) for item in value)  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
         return f'[{items}]'
     if value is None:
         return 'null'
-    return str(value)
+    if isinstance(value, (int, float)):
+        if isinstance(value, float) and not math.isfinite(value):
+            # `str(nan)` 会产出未定义标识符 `nan`,是非法 JS——静默产坏码不如编译期报错
+            raise CompileError(f"js_value: 非有限浮点数 {value!r} 无法发射为 JS 字面量 → 请使用有限数值")
+        return repr(value)
+    raise CompileError(f"js_value: 不支持的 prop 值类型 {type(value).__name__}({value!r})→ 仅支持标量/枚举/模型/列表")
