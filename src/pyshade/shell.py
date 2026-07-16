@@ -22,7 +22,6 @@ if TYPE_CHECKING:
     from pyshade.asgi._dev import DevHttpServer
 
 from anyio.from_thread import start_blocking_portal
-from pytauri import RunEvent
 
 from pyshade.app import ShadeApp
 from pyshade.asgi import AsgiIpcAdapter
@@ -55,6 +54,9 @@ def _resolve_dist(dist_dir: Path | None, config_dir: Path) -> Path:
 
 
 def _smoke_callback() -> Any:
+    # 惰性 import(本模块硬纪律,见模块 docstring):裸 pyshade 环境/无 webkit 系统库的
+    # Linux 上,模块级 import pytauri 会在加载 ext_mod 时直接崩
+    from pytauri import RunEvent
 
     def on_event(app_handle: Any, event: Any) -> None:
         if isinstance(event, RunEvent.Ready):
