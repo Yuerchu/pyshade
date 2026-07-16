@@ -14,7 +14,7 @@ from typing import Any, cast
 from pydantic import BaseModel
 
 from pyshade.app import ShadeApp
-from pyshade.components.base import Component, EventSpec, Handler
+from pyshade.components.base import Component, EventSpec, Handler, const_props_of
 from pyshade.expr import Expr
 from pyshade.nav import NavigateAction
 from pyshade.page import Page, anchor_of, iter_nodes
@@ -52,6 +52,7 @@ class Update:
                 "列表内容请整表替换 ServerState 字段(如 chat.messages = [*chat.messages, msg])"
             )
         fields = type(target).model_fields
+        const_props = const_props_of(target)
         probe = target.model_copy()
         validator = type(target).__pydantic_validator__
         for key, value in props.items():
@@ -59,6 +60,12 @@ class Update:
                 raise ValueError(f"{type(target).__name__} 没有 prop '{key}',无法 Update")
             if any(isinstance(m, EventSpec) for m in fields[key].metadata):
                 raise ValueError(f"事件字段 '{key}' 不能通过 Update 修改")
+            if key in const_props:
+                # 所有权公理(design.md §3.3 'const' 行):内容组件的源 prop 在编译期渲染进产物
+                raise ValueError(
+                    f"{self.target}.{key} 是构建期常量(编译期渲染进产物),不能 Update;"
+                    "内容变更请修改 Python 源码后重新构建"
+                )
             current: object = getattr(target, key)
             if isinstance(current, Expr):
                 # 所有权公理(design.md §3.4):Expr 绑定的 prop 归客户端所有,服务端 patch 是编程错误

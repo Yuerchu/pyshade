@@ -1,14 +1,14 @@
 # component_gallery
 
-PyShade M2 组件画廊:四个页面铺开全部 **22 个组件 + Each + 路由**。
+PyShade 组件画廊:四个页面铺开全部 **24 个组件 + Each + 路由**。
 
 首要职责是给 CI 提供"真实 tsc"校验面——生成代码的每种发射形态(受控 useState、
-选项 map、asChild 槽、多槽容器、`.map` 模板、`rt.navigate`)都在这里出现一次,
-`pnpm -C frontend typecheck` 直接对生成产物做类型检查。
+选项 map、asChild 槽、多槽容器、`.map` 模板、`rt.navigate`、const 字面量)都在这里
+出现一次,`pnpm -C frontend typecheck` 直接对生成产物做类型检查。
 
 | 页面 | 覆盖 |
 |------|------|
-| WidgetsPage | Text / Badge / Alert / Separator / Skeleton / Progress(ServerRef) |
+| WidgetsPage | Heading / Text / Badge / Alert / Separator / Skeleton / Progress(ServerRef)/ Link |
 | FormPage | Input / PasswordInput / Textarea / Checkbox / Switch / Select / RadioGroup / Slider |
 | OverlaysPage | Dialog(trigger 槽 + 受控 open)/ AlertDialog / Tooltip |
 | StructurePage | Tabs / Accordion / ScrollArea / Each(changelog 列表) |

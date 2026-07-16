@@ -63,6 +63,7 @@ Reflex 的教训:编译只覆盖结构层,不自动决定逻辑归属。PyShade 
 | `Expr[T]`(含 `ClientVal`) | 客户端 | 内联 JS,引用 useState 变量 | `Update` 构造期报错;前端 `boundProps` warn+丢弃 |
 | `ServerRef[T]`(ServerState 类字段) | 该字段 | `rt.ov("$s:类名", 字段, 默认)` | auto-diff/推送自动到达;`Update` 构造期报错 |
 | Each 模板内的普通值(M2) | 构建期常量 | 字面量(模板 anchor 跨 item 共享,无 per-item 语义) | `Update` 对 `.$t[` anchor 构造期报错 |
+| `_const_props` 声明的 prop(M4,'const') | 构建期常量 | 字面量(编译期渲染进产物,如 Link.href、Heading.level、Markdown.source) | `Update` 构造期报错 |
 
 M1 落地形态:
 

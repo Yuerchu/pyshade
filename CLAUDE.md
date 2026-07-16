@@ -10,7 +10,8 @@
 - 编译路线(非运行时协议):Python DTO → React 代码生成,编译期暴露错误
 - 所有权公理(§3.3):每个 prop 恰一个所有者——普通值=服务端(rt.ov)、`Expr[T]`=客户端(内联 JS,
   boundProps 防御)、`ServerRef[T]`=ServerState 字段(`$s:` 命名空间,auto-diff/推送)、
-  Each 模板内普通值=构建期常量(`.$t[` anchor 不可 Update)
+  Each 模板内普通值=构建期常量(`.$t[` anchor 不可 Update)、`_const_props` 声明=构建期常量
+  ('const' binding,M4 内容组件的源 prop,Update 构造期拒绝)
 - 表达式子集(§3.4):`&`/`|`/`~` + 比较 + `+`,构造期定型,`__bool__` 抛错,双端求值(to_js/evaluate)
 - 多页面路由(§3.11):route 归客户端(`navigate`→`rt.navigate`,零 IPC);服务端 `Navigate` 编码为
   `$nav` 保留地址 patch;overrides/push 提升 App 级共享 store;页面状态默认 unmount 即丢,
@@ -36,7 +37,7 @@
   `expr.py`(表达式树 + ClientVal/ItemRef + value_of)、`state.py`(ServerState/ServerRef/patch sink)、
   `nav.py`(navigate/Navigate,运行时零依赖)、`components/`(DTO,依赖 expr/state/nav;
   `each.py` 的 render-prop 模板)、`page.py`(布局 + ClientVal 收集 + `$t` 模板 anchor)、
-  `events.py`(Update 所有权拒绝 + item_index)、`compiler/`(ir 的 binding 四分类 → emit_page →
+  `events.py`(Update 所有权拒绝 + item_index)、`compiler/`(ir 的 binding 五分类 → emit_page →
   checks 的 G 规则 + check_app)、`push.py`(PatchBus + SSE)、`asgi/`(IPC 适配)、
   `bundler/`(零 Node 管线:esbuild/staging/entry/assets)、`packager/`(standalone 安装包:
   _cpython 获取链/_scaffold 模板/_platform 修补/_pyembed 装配/_tauri_cli,§3.12)、

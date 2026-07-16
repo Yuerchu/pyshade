@@ -55,6 +55,10 @@ class Component(BaseModel):
     _sensitive: ClassVar[bool] = False
     """design.md §3.8:True → 值仅随 submit 事件跨界,组件不得声明事件字段。"""
 
+    _const_props: ClassVar[frozenset[str]] = frozenset()
+    """design.md §3.3 'const' binding:构建期常量 prop(编译期渲染进产物,与 Each 模板
+    plain prop 同族),Update 构造期拒绝,emitter 内联字面量。"""
+
 
 class ControlledMixin(Generic[T]):
     """受控组件混入:声明客户端持有的受控 prop(如 Input.value / Switch.checked)。
@@ -110,3 +114,8 @@ def component_tag(component: Component) -> str:
 def is_sensitive(component: Component) -> bool:
     """框架内部:组件是否为敏感输入(design.md §3.8)。"""
     return type(component)._sensitive  # pyright: ignore[reportPrivateUsage]
+
+
+def const_props_of(component: Component) -> frozenset[str]:
+    """框架内部:组件的构建期常量 prop 集(design.md §3.3 'const' binding)。"""
+    return type(component)._const_props  # pyright: ignore[reportPrivateUsage]

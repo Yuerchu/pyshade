@@ -3,7 +3,7 @@
 M1 起 PropInfo 携带 binding 分类(所有权公理,design.md §3.4):
 plain=服务端所有(rt.ov 可 patch)/ expr=客户端所有(内联 JS)/
 client_bind=受控 prop 绑定 ClientVal(共用 useState,唯一写者)/
-server_ref=ServerState 字段(Phase 3)。
+server_ref=ServerState 字段(Phase 3)/ const=构建期常量(M4 内容组件,§3.3 模板行同族)。
 """
 
 from dataclasses import dataclass, field
@@ -14,6 +14,7 @@ from pyshade.components.base import (
     ControlledMixin,
     EventSpec,
     TemplateContainer,
+    const_props_of,
     controlled_prop_of,
     is_sensitive,
     template_roots_of,
@@ -23,7 +24,7 @@ from pyshade.nav import NavigateAction
 from pyshade.page import Page, anchor_of, iter_children
 from pyshade.state import ServerRef
 
-PropBinding = Literal['plain', 'expr', 'client_bind', 'server_ref']
+PropBinding = Literal['plain', 'expr', 'client_bind', 'server_ref', 'const']
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +70,8 @@ def _is_enum_field(value: object) -> bool:
 
 
 def _classify_binding(component: Component, name: str, value: object) -> PropBinding:
+    if name in const_props_of(component):
+        return 'const'
     if isinstance(value, ServerRef):
         return 'server_ref'
     if not isinstance(value, Expr):

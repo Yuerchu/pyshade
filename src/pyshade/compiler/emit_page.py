@@ -149,6 +149,9 @@ class _PageEmitContext:
         return f'set{base.capitalize()}Value'
 
     def prop_js(self, node: NodeIR, prop: PropInfo) -> str:
+        if prop.binding == 'const':
+            # 构建期常量(§3.3 'const' 行):编译期定值,发字面量,patch 不可达
+            return js_value(prop.default_value)
         if prop.binding == 'expr':
             return cast('Expr[Any]', prop.default_value).to_js(self.scope)
         if prop.binding == 'server_ref':
@@ -278,6 +281,38 @@ def emit_text(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     class_name = ' className="text-muted-foreground"' if muted and muted.default_value else ''
     text_js = ctx.prop_js(node, text) if text else js_string('')
     w.line(f'<p{class_name}>{{{text_js}}}</p>')
+    _close_visible_guard(guarded, w)
+
+
+_HEADING_TAGS: dict[int, tuple[str, str]] = {
+    1: ('h1', 'scroll-m-20 text-4xl font-extrabold tracking-tight'),
+    2: ('h2', 'scroll-m-20 text-3xl font-semibold tracking-tight'),
+    3: ('h3', 'scroll-m-20 text-2xl font-semibold tracking-tight'),
+    4: ('h4', 'scroll-m-20 text-xl font-semibold tracking-tight'),
+}
+"""level → (标签, 排版 class);字符串写在编译器源码内,发版 CSS 预编译经 @source 扫描命中。"""
+
+
+@register('Heading')
+def emit_heading(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    guarded = _emit_visible_guard(node, w, ctx)
+    level = next(p for p in node.props if p.name == 'level')
+    text = next((p for p in node.props if p.name == 'text'), None)
+    tag, class_name = _HEADING_TAGS[cast('int', level.default_value)]
+    text_js = ctx.prop_js(node, text) if text else js_string('')
+    w.line(f'<{tag} className="{class_name}">{{{text_js}}}</{tag}>')
+    _close_visible_guard(guarded, w)
+
+
+@register('Link')
+def emit_link(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    guarded = _emit_visible_guard(node, w, ctx)
+    text = next(p for p in node.props if p.name == 'text')
+    href = next(p for p in node.props if p.name == 'href')
+    w.line(
+        f'<a href={{{ctx.prop_js(node, href)}}} target="_blank" rel="noreferrer" '
+        f'className="font-medium underline underline-offset-4">{{{ctx.prop_js(node, text)}}}</a>'
+    )
     _close_visible_guard(guarded, w)
 
 

@@ -1,7 +1,8 @@
-"""组件画廊:22 个组件 + Each + 路由全铺开。
+"""组件画廊:24 个组件 + Each + 路由全铺开。
 
 这个 example 的首要职责是给 CI 提供"真实 tsc"校验面——生成代码的每种发射形态
-(受控 useState、选项 map、asChild 槽、多槽容器、.map 模板、rt.navigate)都在这里出现一次。
+(受控 useState、选项 map、asChild 槽、多槽容器、.map 模板、rt.navigate、const 字面量)
+都在这里出现一次。
 """
 
 from typing import Any
@@ -22,7 +23,9 @@ from pyshade.components import (
     Checkbox,
     Dialog,
     Each,
+    Heading,
     Input,
+    Link,
     Option,
     Orientation,
     PasswordInput,
@@ -46,14 +49,16 @@ from pyshade.page import Page
 
 
 class WidgetsPage(Page):
-    """Wave 1 纯展示组件 + ServerRef 进度。"""
+    """Wave 1 纯展示组件 + M4 内容组件 + ServerRef 进度。"""
 
-    heading = Text('组件画廊 — 展示件')
-    tag = Badge('M2', variant=BadgeVariant.SECONDARY)
-    notice = Alert('提示', description='四个页面覆盖全部 22 个组件', variant=AlertVariant.DEFAULT)
+    heading = Heading('组件画廊 — 展示件', level=1)
+    intro = Text('每种发射形态在四个页面各出现一次')
+    tag = Badge('M4', variant=BadgeVariant.SECONDARY)
+    notice = Alert('提示', description='四个页面覆盖全部 24 个组件', variant=AlertVariant.DEFAULT)
     divider = Separator(orientation=Orientation.HORIZONTAL)
     placeholder = Skeleton(width='10rem', height='1.25rem')
     upload = Progress(GalleryDemoState.upload_pct)
+    repo = Link('PyShade 源码', 'https://github.com/Yuerchu/pyshade')
 
     goto_form = Button('表单件', variant=ButtonVariant.OUTLINE, on_click=navigate('FormPage'))
     goto_overlays = Button('浮层件', variant=ButtonVariant.OUTLINE, on_click=navigate('OverlaysPage'))
@@ -61,16 +66,18 @@ class WidgetsPage(Page):
 
     card = Card(
         heading,
+        intro,
         tag,
         notice,
         divider,
         placeholder,
         upload,
+        repo,
         goto_form,
         goto_overlays,
         goto_structure,
         title='展示件',
-        description='Text / Badge / Alert / Separator / Skeleton / Progress',
+        description='Heading / Text / Badge / Alert / Separator / Skeleton / Progress / Link',
     )
 
 

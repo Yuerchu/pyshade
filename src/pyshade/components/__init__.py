@@ -20,7 +20,9 @@ from pyshade.components.enums import (
     Orientation,
     TooltipSide,
 )
+from pyshade.components.heading import Heading
 from pyshade.components.input import Input, PasswordInput
+from pyshade.components.link import Link
 from pyshade.components.options import Option
 from pyshade.components.progress import Progress
 from pyshade.components.radio_group import RadioGroup
@@ -53,8 +55,10 @@ __all__ = [
     'Each',
     'EventSpec',
     'Handler',
+    'Heading',
     'Input',
     'item_snapshot',
+    'Link',
     'Option',
     'Orientation',
     'PasswordInput',
