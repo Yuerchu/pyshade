@@ -38,3 +38,8 @@ CI(`.github/workflows/docs.yml`)在 push main 时构建;配好以下 secrets 后
    `CLOUDFLARE_ACCOUNT_ID`;
 5. (可选)Pages 项目绑自定义域后,仓库 Variables 加 `PYSHADE_DOCS_BASE_URL` 指向新域
    (影响语言切换 Link 与 llms.txt 内链)。
+
+## 已知小瑕疵
+
+- 无 favicon(浏览器控制台 404,无功能影响)——bundle 三件套契约没有静态资产管线
+  (design.md §6 的 Image/资产开放问题),有管线后一并解。
