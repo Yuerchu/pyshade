@@ -22,6 +22,7 @@ from pyshade.components.base import (
 from pyshade.expr import ClientVal, Expr
 from pyshade.nav import NavigateAction
 from pyshade.page import Page, anchor_of, iter_children
+from pyshade.scheme import SetColorSchemeAction
 from pyshade.state import ServerRef
 
 PropBinding = Literal['plain', 'expr', 'client_bind', 'server_ref', 'const']
@@ -51,6 +52,15 @@ class NavInfo:
     target_page: str
 
 
+@dataclass(frozen=True, slots=True)
+class SchemeInfo:
+    """事件 prop 上的配色切换(set_color_scheme()):零 IPC,无 handlerId(M4 dark mode)。"""
+
+    field_name: str
+    kind: str
+    mode: str
+
+
 @dataclass(slots=True)
 class NodeIR:
     anchor: str
@@ -59,6 +69,7 @@ class NodeIR:
     props: list[PropInfo] = field(default_factory=list[PropInfo])
     events: list[EventInfo] = field(default_factory=list[EventInfo])
     navigations: list[NavInfo] = field(default_factory=list[NavInfo])
+    schemes: list[SchemeInfo] = field(default_factory=list[SchemeInfo])
     children: list['NodeIR'] = field(default_factory=list['NodeIR'])
     sensitive: bool = False
 
@@ -92,6 +103,7 @@ def build_node_ir(component: Component) -> NodeIR:
     props: list[PropInfo] = []
     events: list[EventInfo] = []
     navigations: list[NavInfo] = []
+    schemes: list[SchemeInfo] = []
 
     for name, field_info in type(component).model_fields.items():
         specs = [m for m in field_info.metadata if isinstance(m, EventSpec)]
@@ -99,6 +111,8 @@ def build_node_ir(component: Component) -> NodeIR:
             handler = getattr(component, name)
             if isinstance(handler, NavigateAction):
                 navigations.append(NavInfo(field_name=name, kind=specs[0].kind, target_page=handler.page_name))
+            elif isinstance(handler, SetColorSchemeAction):
+                schemes.append(SchemeInfo(field_name=name, kind=specs[0].kind, mode=handler.mode))
             elif handler is not None:
                 events.append(EventInfo(field_name=name, kind=specs[0].kind, handler_id=f'{anchor}.{name}'))
             continue
@@ -132,6 +146,7 @@ def build_node_ir(component: Component) -> NodeIR:
         props=props,
         events=events,
         navigations=navigations,
+        schemes=schemes,
         children=children_ir,
         sensitive=is_sensitive(component),
     )

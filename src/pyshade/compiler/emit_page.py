@@ -327,6 +327,7 @@ def emit_button(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     submit = next((p for p in node.props if p.name == 'submit'), None)
     click_event = next((e for e in node.events if e.kind == 'click'), None)
     click_nav = next((n for n in node.navigations if n.kind == 'click'), None)
+    click_scheme = next((s for s in node.schemes if s.kind == 'click'), None)
 
     is_submit = submit is not None and submit.default_value is True
     attrs: list[str] = []
@@ -351,6 +352,8 @@ def emit_button(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
             attrs.append(f'onClick={{() => rt.fire({hid}, {{}})}}')
     elif click_nav:
         attrs.append(f'onClick={{() => rt.navigate({js_string(click_nav.target_page)})}}')
+    elif click_scheme:
+        attrs.append(f'onClick={{() => rt.setColorScheme({js_string(click_scheme.mode)})}}')
 
     text_val = ctx.prop_js(node, text) if text else js_string('')
     w.line(f'<Button {" ".join(attrs)}>')

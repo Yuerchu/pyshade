@@ -13,6 +13,7 @@ import { suiteRtt } from "./suites/rtt";
 import { suiteSpaEachClick, suiteSpaNavigate } from "./suites/spa";
 import { suiteStreaming } from "./suites/streaming";
 import { runCloseWindowScenario } from "./suites/closeWindow";
+import { suiteColorScheme } from "./suites/theme";
 import { suiteTyping } from "./suites/typing";
 import { makeCase, type CaseResult, type RunConfig, type SuiteFn } from "./types";
 
@@ -26,6 +27,7 @@ const BUILTIN_SUITES: [string, SuiteFn][] = [
   ["routing.state", suiteRouting],
   ["routing.keep_alive", suiteRoutingKeepAlive],
   ["routing.deep_link", suiteRoutingDeepLink],
+  ["theme.color_scheme", suiteColorScheme],
   ["spa.each_click", suiteSpaEachClick],
   ["spa.navigate", suiteSpaNavigate],
 ];

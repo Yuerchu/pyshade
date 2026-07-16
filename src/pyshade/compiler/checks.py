@@ -201,6 +201,8 @@ def _check_component_rules(node: NodeIR) -> None:
     """组件特有规则(按 tag 分发)。"""
     if node.navigations:
         _check_navigation(node)
+    if node.schemes:
+        _check_scheme(node)
     if node.tag == 'Progress':
         value = next((p for p in node.props if p.name == 'value'), None)
         if value is not None and value.binding == 'plain':
@@ -253,6 +255,17 @@ def _check_navigation(node: NodeIR) -> None:
         raise CompileError(
             f"{node.anchor}.{nav.field_name}: submit=True 的按钮需要 handler 接收 values,"
             "navigate 不携带数据 → 请改用模块级 handler 并在服务端返回 Navigate(Page)"
+        )
+
+
+def _check_scheme(node: NodeIR) -> None:
+    """set_color_scheme 是纯客户端配色切换,不产生 IPC:submit=True 与之互斥(同 navigate)。"""
+    submit = next((p for p in node.props if p.name == 'submit'), None)
+    if submit is not None and submit.default_value is True:
+        scheme = node.schemes[0]
+        raise CompileError(
+            f"{node.anchor}.{scheme.field_name}: submit=True 的按钮需要 handler 接收 values,"
+            "set_color_scheme 不携带数据 → 配色切换请放到非 submit 按钮上"
         )
 
 

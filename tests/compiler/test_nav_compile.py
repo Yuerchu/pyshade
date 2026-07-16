@@ -67,7 +67,7 @@ class TestNavGolden:
         # boundProps 全页聚合;DetailPage 的 ServerRef 让 App 级 push 开启
         assert '"NavHomePage.density.checked",' in tsx
         assert '"NavHomePage.hint.visible",' in tsx
-        assert 'boundProps={BOUND_PROPS} push pageNames={Object.keys(PAGES)} deepLink>' in tsx
+        assert 'boundProps={BOUND_PROPS} push pageNames={Object.keys(PAGES)} deepLink colorScheme="system">' in tsx
         golden_compare('app_nav.gen.tsx', tsx)
 
     def test_deep_link_attrs_always_emitted(self) -> None:

@@ -67,5 +67,11 @@ def test_routing_deep_link(native_report: TestReport) -> None:
     assert case.status == 'pass', case.model_dump()
 
 
+def test_theme_color_scheme(native_report: TestReport) -> None:
+    """M4 dark mode:toggle 落显式选择、system 清键跟随 matchMedia、.dark class 驱动。"""
+    case = _case(native_report, 'theme.color_scheme')
+    assert case.status == 'pass', case.model_dump()
+
+
 def test_overall_verdict(native_report: TestReport) -> None:
     assert native_report.ok, native_report.to_markdown()

@@ -144,9 +144,11 @@ M2 落地形态(组件铺量期的所有权决策):
 - **CSS 发版时预编译**:仓库内 `@tailwindcss/cli` 产出单 style.css 进 wheel,用户不碰 Tailwind。
   双层变量(`:root` 持值 + `@theme inline` 映射)保证预编译后运行时仍可换主题;`@source` 直接扫
   emitter 的 .py 字符串(v4 扫描器语言无关),CI 以 `check_css_coverage` 断言 golden/ui 全部 class 命中。
-  主题口子(M3):`ShadeApp(theme=Theme(...))` 只暴露 CSS 变量层——token 全量镜像 :root
-  (对账测试锚定),compile 发 `theme.gen.css`、bundle 内联 `<style>`(三件套契约不变),
-  值原样透传 + 注入护栏;dark mode 留 M4(`:root{}` 包裹为 `.dark{}` 留位)。
+  主题口子(M3 亮色 / M4 暗色):`ShadeApp(theme=Theme(..., dark=ThemeTokens(...)))` 只暴露
+  CSS 变量层——token 全量镜像 :root 与 .dark(对账测试双向锚定,radius 是模式无关 token),
+  compile 发 `theme.gen.css` 三段(`:root` 模式无关 / `:root:not(.dark)` 亮色——specificity
+  保证内联后到不压过内置暗色默认 / `.dark` 暗色)、bundle 内联 `<style>`(三件套契约不变),
+  值原样透传 + 注入护栏。dark: utility 经 `@custom-variant dark` 走 class 策略。
 - **单一源码真相**:wheel 内 `pyshade/_frontend/` 由 hatch 构建钩子从 `frontend/` 注入
   (fresh checkout 无产物时不注入,editable 安装回退仓库布局);CI `bundle-zero-node` job 在
   剔除 node 的环境里以 wheel 安装打包并跑真机 E2E,与 vite 管线产物互为对照。
@@ -225,6 +227,14 @@ M2 落地形态(组件铺量期的所有权决策):
   runtime 默认关(testkit 双 Provider 同 document 不串扰的前提);启动 hash 覆盖初始页
   (replaceState 规范化),navigate 直赋 hash(历史条目,浏览器后退可用),hashchange 反向驱动,
   无效目标 warn + 忽略不回写。打包 WebView 无地址栏 → 恒回落 pages[0],为 web target 铺路。
+- **color scheme 归客户端(M4 dark mode,route 的平行先例)**:纯呈现态、零 IPC、服务端不可
+  patch。class 策略(documentElement 挂 `.dark`,应用内切换必须 class,系统跟随由 runtime
+  解析后落 class);`ShadeApp(color_scheme='system'|'light'|'dark')` 是默认值,localStorage
+  只存显式选择('system' 清键回到跟随系统)。切换器不做内置组件——`set_color_scheme()` /
+  `toggle_color_scheme()` 是与 navigate 同族的零 IPC action(ClientAction 基类:__bool__/
+  __call__ 抛错 + is_instance schema),赋给事件 prop 编译为 `rt.setColorScheme(...)`,
+  不进 EventRegistry;submit=True 与之互斥(CompileError)。bundle 的 index.html 恒注入
+  head 内联 boot script(与 runtime 同解析规则)防首帧白闪。
 
 ### 3.12 打包分发链(M3 已实现,`pyshade init` + `pyshade package`)
 
@@ -325,8 +335,6 @@ M0 是风险所在,M2 之后是体力活;先验证再铺量。
   "壳+子进程 server"是 §3.7 否决的形态);窗口侧的热重载路径仍开放。dev loop 的增量编译
   (worker 已打 import/bundle 阶段耗时基线)是 M4 优化项。
 - shadcn 上游同步策略:shadcn 组件源码更新后,PyShade 内置副本如何跟进。
-- 主题 dark mode:亮色口子已落地(§3.6),暗色需要切换机制(prefers-color-scheme vs class)
-  与 runtime 交互设计,M4。
 - 安装包签名/公证(macOS notarization / Windows 代码签名):M4+;当前 release notes
   附未签名产物的打开指引。
 - 服务端弹窗:`open` 归客户端所有(§3.3),服务端想主动弹窗(全局错误/更新提示)缺正门,
@@ -336,4 +344,5 @@ M0 是风险所在,M2 之后是体力活;先验证再铺量。
 已关闭的问题(结论回填正文):pytauri 成熟度评估 → 3.9;Python 打包工具选型 → 不用
 PyInstaller/Nuitka,走 python-build-standalone + Tauri bundler(3.9 / M3);流式协议设计 →
 PSA1 封包 + Channel 帧(§3.7 / §4 实测),SSE 直接复用 ASGI 流式分支(§3.3 推送通道),
-WebSocket 语义 M1 未见需求,不引入。
+WebSocket 语义 M1 未见需求,不引入;主题 dark mode → class 策略 + 零 IPC action +
+localStorage 显式选择(§3.6 / §3.11,M4)。

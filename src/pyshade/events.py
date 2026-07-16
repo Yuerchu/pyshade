@@ -13,10 +13,10 @@ from typing import Any, cast
 
 from pydantic import BaseModel
 
+from pyshade.actions import ClientAction
 from pyshade.app import ShadeApp
 from pyshade.components.base import Component, EventSpec, Handler, const_props_of
 from pyshade.expr import Expr
-from pyshade.nav import NavigateAction
 from pyshade.page import Page, anchor_of, iter_nodes
 from pyshade.state import ServerRef
 
@@ -169,8 +169,8 @@ class EventRegistry(Mapping[str, EventEntry]):
                     if not specs:
                         continue
                     handler: Handler | None = getattr(component, field_name)
-                    if handler is None or isinstance(handler, NavigateAction):
-                        continue  # navigate 编译为 rt.navigate,零 IPC,不进注册表
+                    if handler is None or isinstance(handler, ClientAction):
+                        continue  # 客户端 action(navigate/scheme)零 IPC,不进注册表
                     handler_id = f'{anchor_of(component)}.{field_name}'
                     validate_handler(handler, owner=handler_id)
                     submit = bool(getattr(component, 'submit', False))

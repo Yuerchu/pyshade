@@ -46,6 +46,7 @@ from pyshade.components import (
 from pyshade.expr import ClientVal, value_of
 from pyshade.nav import navigate
 from pyshade.page import Page
+from pyshade.scheme import toggle_color_scheme
 
 
 class WidgetsPage(Page):
@@ -59,6 +60,7 @@ class WidgetsPage(Page):
     placeholder = Skeleton(width='10rem', height='1.25rem')
     upload = Progress(GalleryDemoState.upload_pct)
     repo = Link('PyShade 源码', 'https://github.com/Yuerchu/pyshade')
+    dark_toggle = Button('明暗切换', variant=ButtonVariant.GHOST, on_click=toggle_color_scheme())
 
     goto_form = Button('表单件', variant=ButtonVariant.OUTLINE, on_click=navigate('FormPage'))
     goto_overlays = Button('浮层件', variant=ButtonVariant.OUTLINE, on_click=navigate('OverlaysPage'))
@@ -73,6 +75,7 @@ class WidgetsPage(Page):
         placeholder,
         upload,
         repo,
+        dark_toggle,
         goto_form,
         goto_overlays,
         goto_structure,

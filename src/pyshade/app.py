@@ -2,6 +2,7 @@
 
 from pyshade.components.base import Component
 from pyshade.page import Page
+from pyshade.scheme import ColorSchemeMode
 from pyshade.theme import Theme
 
 
@@ -20,13 +21,18 @@ class ShadeApp:
         extra_components: list[type[Component]] | None = None,
         keep_alive: bool = False,
         theme: Theme | None = None,
+        color_scheme: ColorSchemeMode = 'system',
     ) -> None:
         if not pages:
             raise ValueError("ShadeApp 至少需要一个页面")
+        if color_scheme not in ('system', 'light', 'dark'):
+            raise ValueError(f"color_scheme 必须是 system/light/dark 之一(收到 {color_scheme!r})")
         self.title = title
         self.pages = pages
         self.extra_components: list[type[Component]] = list(extra_components or [])
         self.keep_alive = keep_alive
         """True → 访问过的页面保持挂载(display:none),ClientVal/受控输入跨切页存活(§3.11)。"""
         self.theme = theme
-        """覆盖 :root token 的主题(theme.gen.css / bundle 内联);None 零产物。"""
+        """覆盖 :root/.dark token 的主题(theme.gen.css / bundle 内联);None 零产物。"""
+        self.color_scheme = color_scheme
+        """默认配色(§3.11 dark mode):system=跟随系统;localStorage 显式选择优先于此值。"""

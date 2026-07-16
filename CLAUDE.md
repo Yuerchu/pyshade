@@ -15,7 +15,9 @@
 - 表达式子集(§3.4):`&`/`|`/`~` + 比较 + `+`,构造期定型,`__bool__` 抛错,双端求值(to_js/evaluate)
 - 多页面路由(§3.11):route 归客户端(`navigate`→`rt.navigate`,零 IPC);服务端 `Navigate` 编码为
   `$nav` 保留地址 patch;overrides/push 提升 App 级共享 store;页面状态默认 unmount 即丢,
-  `keep_alive=True` 保活(display:none);`#/PageName` 深链(生成 App 恒开,runtime 默认关)
+  `keep_alive=True` 保活(display:none);`#/PageName` 深链(生成 App 恒开,runtime 默认关);
+  color scheme 同族归客户端(M4):class 策略 + `set_color_scheme()/toggle_color_scheme()` 零 IPC
+  action(ClientAction 基类)+ localStorage 显式选择,`Theme(dark=ThemeTokens(...))` 暗色 token
 - standalone 打包(§3.12):`pyshade init`(src-tauri 模板)+ `pyshade package`(便携 CPython +
   cargo-tauri),打包机 = Python + Rust 零 Node;`pyshade.shell.run` 双形态 shim;
   `pyshade dev` = supervisor/worker 整代重启 + generation SSE 刷新(浏览器向,窗口不进 dev loop);
@@ -33,10 +35,11 @@
   (strict + reportUnnecessaryTypeIgnoreComment:测试锚定应报错用法,ignore 双向锁定)
 - 前端(`frontend/`):pnpm,React + shadcn/ui + Tailwind;`pnpm -C frontend build` 前需先
   `uv run pyshade build login_form.app:app --out frontend/src/generated`(PYTHONPATH=examples/login_form/src)
-- 模块边界(依赖单向,`expr.py`/`state.py`/`nav.py` 是叶子):
+- 模块边界(依赖单向,`expr.py`/`state.py`/`actions.py`/`nav.py`/`scheme.py` 是叶子):
   `expr.py`(表达式树 + ClientVal/ItemRef + value_of)、`state.py`(ServerState/ServerRef/patch sink)、
-  `nav.py`(navigate/Navigate,运行时零依赖)、`components/`(DTO,依赖 expr/state/nav;
-  `each.py` 的 render-prop 模板)、`page.py`(布局 + ClientVal 收集 + `$t` 模板 anchor)、
+  `actions.py`(ClientAction 基类:零 IPC action 的误用防线 + is_instance schema)、
+  `nav.py`(navigate/Navigate)、`scheme.py`(set/toggle_color_scheme)、`components/`
+  (DTO,依赖 expr/state/actions;`each.py` 的 render-prop 模板)、`page.py`(布局 + ClientVal 收集 + `$t` 模板 anchor)、
   `events.py`(Update 所有权拒绝 + item_index)、`compiler/`(ir 的 binding 五分类 → emit_page →
   checks 的 G 规则 + check_app)、`push.py`(PatchBus + SSE)、`asgi/`(IPC 适配)、
   `bundler/`(零 Node 管线:esbuild/staging/entry/assets)、`packager/`(standalone 安装包:
@@ -45,7 +48,8 @@
   `cli.py`(build/bundle/init/package)
 - 前端 runtime 边界:`patches.ts`(mergePatches + `$nav` 保留地址)、`store.ts`(App 级共享 store
   context)、`app.tsx`(ShadeAppProvider/ShadeRouter,push 订阅提升 App 层)、`page.ts`
-  (usePageRuntime 双模式:有 Provider 走共享 store,无则页面本地)
+  (usePageRuntime 双模式:有 Provider 走共享 store,无则页面本地)、`scheme.ts`(配色纯函数:
+  localStorage 读写 + resolveDark + class 应用,app/page 共用)
 - golden 测试:`PYSHADE_UPDATE_GOLDEN=1 uv run pytest tests/compiler` 再看 git diff 确认改动范围
 - 真机 E2E:`uv run pytest tests/e2e_native -m e2e_native`(需 pnpm build + build:testkit 产物;CI windows job 自动跑)
 - 本地有 pytauri 源码可查:`~/Documents/Code/pytauri`

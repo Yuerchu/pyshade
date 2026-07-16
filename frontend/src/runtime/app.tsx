@@ -14,6 +14,13 @@
 import { useCallback, useContext, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { mergePatches, NAV_TARGET, type Overrides, type Patch } from "./patches";
 import { subscribePatches } from "./push";
+import {
+  applySchemeClass,
+  persistScheme,
+  readStoredScheme,
+  systemPrefersDark,
+  type ColorSchemeMode,
+} from "./scheme";
 import { ShadeRuntimeContext, type ShadeRuntimeStore } from "./store";
 
 function parseHash(hash: string): string | null {
@@ -31,10 +38,20 @@ interface ShadeAppProviderProps {
   pageNames?: string[];
   /** #/PageName 深链与 hash 同步;runtime 默认 false,生成的 App 恒传 true。 */
   deepLink?: boolean;
+  /** 默认配色(= ShadeApp.color_scheme);localStorage 显式选择优先于此值。 */
+  colorScheme?: ColorSchemeMode;
   children: ReactNode;
 }
 
-export function ShadeAppProvider({ initial, boundProps, push, pageNames, deepLink, children }: ShadeAppProviderProps) {
+export function ShadeAppProvider({
+  initial,
+  boundProps,
+  push,
+  pageNames,
+  deepLink,
+  colorScheme,
+  children,
+}: ShadeAppProviderProps) {
   const linkEnabled = deepLink ?? false;
   const [names] = useState<Set<string>>(() => new Set(pageNames ?? []));
   const [currentPage, setCurrentPage] = useState<string>(() => {
@@ -49,6 +66,36 @@ export function ShadeAppProvider({ initial, boundProps, push, pageNames, deepLin
   const [visitedPages, setVisitedPages] = useState<string[]>(() => [currentPage]);
   const [overrides, setOverrides] = useState<Overrides>({});
   const [bound] = useState<Set<string>>(() => new Set(boundProps ?? []));
+  // 配色状态机:localStorage 显式选择 ?? app 默认 ?? system;class 由 resolvedDark 驱动
+  const [scheme, setScheme] = useState<ColorSchemeMode>(() => readStoredScheme() ?? colorScheme ?? "system");
+  const [systemDark, setSystemDark] = useState<boolean>(() => systemPrefersDark());
+  const resolvedDark = scheme === "dark" || (scheme === "system" && systemDark);
+
+  useEffect(() => {
+    if (scheme !== "system" || typeof matchMedia !== "function") {
+      return;
+    }
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    const onChange = (event: MediaQueryListEvent) => setSystemDark(event.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [scheme]);
+
+  useEffect(() => {
+    applySchemeClass(resolvedDark);
+  }, [resolvedDark]);
+
+  const setColorScheme = useCallback(
+    (mode: ColorSchemeMode | "toggle") => {
+      const next: ColorSchemeMode = mode === "toggle" ? (resolvedDark ? "light" : "dark") : mode;
+      persistScheme(next);
+      if (next === "system") {
+        setSystemDark(systemPrefersDark()); // 回到跟随系统时立即重采样
+      }
+      setScheme(next);
+    },
+    [resolvedDark],
+  );
 
   const navigateTo = useCallback(
     (page: string) => {
@@ -111,8 +158,17 @@ export function ShadeAppProvider({ initial, boundProps, push, pageNames, deepLin
   }, [pushEnabled, applyPatches]);
 
   const store = useMemo<ShadeRuntimeStore>(
-    () => ({ overrides, applyPatches, navigate: navigateTo, currentPage, visitedPages }),
-    [overrides, applyPatches, navigateTo, currentPage, visitedPages],
+    () => ({
+      overrides,
+      applyPatches,
+      navigate: navigateTo,
+      currentPage,
+      visitedPages,
+      colorScheme: scheme,
+      resolvedDark,
+      setColorScheme,
+    }),
+    [overrides, applyPatches, navigateTo, currentPage, visitedPages, scheme, resolvedDark, setColorScheme],
   );
 
   return <ShadeRuntimeContext.Provider value={store}>{children}</ShadeRuntimeContext.Provider>;

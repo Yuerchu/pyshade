@@ -2,6 +2,7 @@ import { useCallback, useContext, useEffect, useState } from "react";
 import { invokeEvent } from "./invoke";
 import { isPatchesEnvelope, mergePatches, NAV_TARGET, type Overrides, type Patch } from "./patches";
 import { subscribePatches } from "./push";
+import { applySchemeClass, persistScheme, resolveDark, type ColorSchemeMode } from "./scheme";
 import { ShadeRuntimeContext } from "./store";
 
 interface PageRuntimeOptions {
@@ -15,6 +16,7 @@ interface PageRuntime {
   ov: <T>(anchor: string, prop: string, fallback: T) => T;
   fire: (handlerId: string, payload: unknown) => void;
   navigate: (page: string) => void;
+  setColorScheme: (mode: ColorSchemeMode | "toggle") => void;
 }
 
 /**
@@ -86,5 +88,14 @@ export function usePageRuntime(options?: PageRuntimeOptions): PageRuntime {
   }, []);
   const navigate = app !== null ? app.navigate : warnNavigate;
 
-  return { ov, fire, navigate };
+  // 无 Provider 回落:直接操作 documentElement class + localStorage(单页挂载/单测可用)
+  const fallbackSetColorScheme = useCallback((mode: ColorSchemeMode | "toggle") => {
+    const currentDark = document.documentElement.classList.contains("dark");
+    const next: ColorSchemeMode = mode === "toggle" ? (currentDark ? "light" : "dark") : mode;
+    persistScheme(next);
+    applySchemeClass(resolveDark(next));
+  }, []);
+  const setColorScheme = app !== null ? app.setColorScheme : fallbackSetColorScheme;
+
+  return { ov, fire, navigate, setColorScheme };
 }

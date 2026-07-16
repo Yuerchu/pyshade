@@ -35,7 +35,8 @@ def compile_app(app: ShadeApp, out_dir: str | Path) -> None:
     item_models = collect_item_models(page_irs)
     extra_tags = [cls._shade_tag for cls in app.extra_components]  # pyright: ignore[reportPrivateUsage]
     (out / 'types.gen.ts').write_text(emit_types(enums, item_models), encoding='utf-8', newline='\n')
-    (out / 'app.gen.tsx').write_text(emit_app(page_irs, keep_alive=app.keep_alive), encoding='utf-8', newline='\n')
+    app_tsx = emit_app(page_irs, keep_alive=app.keep_alive, color_scheme=app.color_scheme)
+    (out / 'app.gen.tsx').write_text(app_tsx, encoding='utf-8', newline='\n')
     if app.theme is not None:
         from pyshade.compiler.emit_theme import emit_theme_css
 

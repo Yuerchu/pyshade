@@ -10,10 +10,9 @@
 本模块运行时是叶子(Page 仅 TYPE_CHECKING / 函数内延迟导入),components 可安全依赖。
 """
 
-from typing import TYPE_CHECKING, NoReturn, cast
+from typing import TYPE_CHECKING, cast
 
-from pydantic import GetCoreSchemaHandler
-from pydantic_core import CoreSchema, core_schema
+from pyshade.actions import ClientAction
 
 if TYPE_CHECKING:
     from pyshade.page import Page
@@ -33,27 +32,19 @@ def _page_name(page: 'type[Page] | str', *, owner: str) -> str:
     return candidate.__name__
 
 
-class NavigateAction:
-    """navigate(Page) 的返回值:事件 prop 上的客户端导航标记(不是 handler,不可调用)。"""
+class NavigateAction(ClientAction):
+    """navigate(Page) 的返回值:事件 prop 上的客户端导航标记(不是 handler,不可调用)。
+
+    误用防线(__bool__/__call__ 抛错)与 is_instance schema 由 ClientAction 承接。
+    """
 
     __slots__ = ('page_name',)
 
     def __init__(self, page_name: str) -> None:
         self.page_name = page_name
 
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source: object, handler: GetCoreSchemaHandler) -> CoreSchema:
-        # 事件 prop 注解 `Handler | NavigateAction | None` 时按 isinstance 校验
-        return core_schema.is_instance_schema(cls)
-
     def __repr__(self) -> str:
         return f'navigate({self.page_name})'
-
-    def __bool__(self) -> NoReturn:
-        raise TypeError("NavigateAction 不能用于条件判断;它只能赋给事件 prop(如 on_click=navigate(Page))")
-
-    def __call__(self, *args: object, **kwargs: object) -> NoReturn:
-        raise TypeError("NavigateAction 不是 handler,不能被调用;它只能赋给事件 prop(如 on_click=navigate(Page))")
 
 
 def navigate(page: 'type[Page] | str') -> NavigateAction:

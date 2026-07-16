@@ -8,7 +8,7 @@ const PAGES = {
 
 export default function App() {
   return (
-    <ShadeAppProvider initial="LoginPage" pageNames={Object.keys(PAGES)} deepLink>
+    <ShadeAppProvider initial="LoginPage" pageNames={Object.keys(PAGES)} deepLink colorScheme="system">
       <ShadeRouter pages={PAGES} />
     </ShadeAppProvider>
   );

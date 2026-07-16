@@ -6,6 +6,10 @@
 @source ".";
 @source "../../src/pyshade/compiler";
 
+/* dark mode 走 class 策略(M4,design.md §3.11):dark: utility 匹配 .dark 祖先,
+   而非 prefers-color-scheme——应用内切换必须 class,系统跟随由 runtime 解析后落 class。 */
+@custom-variant dark (&:is(.dark *));
+
 /* 双层变量(shadcn v4 规范)::root 持有主题值,@theme inline 仅做映射。
    utility 编译产物引用 var(--token) → 预编译后运行时仍可覆盖主题(theme.css / dark mode)。 */
 :root {
@@ -38,6 +42,43 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  color-scheme: light;
+}
+
+/* shadcn 暗色默认值(neutral);radius 是模式无关 token,不在此重定义。
+   Theme(dark=ThemeTokens(...)) 经 theme.gen.css 的 .dark 块覆盖此处默认。 */
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+
+  color-scheme: dark;
 }
 
 @theme inline {
