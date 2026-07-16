@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import Field
+
 from pyshade.components.base import Component
 from pyshade.expr import Expr
 from pyshade.state import ServerRef
@@ -10,8 +12,8 @@ class ScrollArea(Component):
 
     _shade_tag = 'ScrollArea'
 
-    height: str = '16rem'
-    children: list[Component] = []
+    height: str = Field(default='16rem', description="Fixed viewport height as a CSS length string (e.g. '16rem').")
+    children: list[Component] = Field(default=[], description="Child components rendered inside the scroll viewport.")
 
     def __init__(
         self,

@@ -15,12 +15,25 @@ class Select(Component, ControlledMixin[str]):
     _shade_tag = 'Select'
     _controlled_prop: ClassVar[str] = 'value'
 
-    label: str | None = None
-    placeholder: str | None = None
-    options: list[Option] = Field(default_factory=list[Option])
-    value: str | ClientVal[str] = ''
-    disabled: bool | Expr[bool] | ServerRef[bool] = False
-    on_change: Annotated[Handler | None, EventSpec('change')] = None
+    label: str | None = Field(default=None, description="Optional label rendered above the select.")
+    placeholder: str | None = Field(default=None, description="Placeholder shown while no value is selected.")
+    options: list[Option] = Field(
+        default_factory=list[Option],
+        description="Selectable options; the server may replace the whole list via Update.",
+    )
+    value: str | ClientVal[str] = Field(
+        default='',
+        description="Selected option value; bind a ClientVal for client-owned controlled state.",
+    )
+    disabled: bool | Expr[bool] | ServerRef[bool] = Field(
+        default=False,
+        description="Disabled state; plain value (server-patchable), client expression, or ServerState field.",
+    )
+    on_change: Annotated[
+        Handler | None,
+        EventSpec('change'),
+        Field(description="Change handler; fires immediately on selection."),
+    ] = None
 
     def __init__(
         self,

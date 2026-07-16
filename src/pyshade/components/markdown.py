@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import Field
+
 from pyshade.components.base import Component
 from pyshade.expr import Expr
 from pyshade.state import ServerRef
@@ -16,7 +18,9 @@ class Markdown(Component):
     _shade_tag = 'Markdown'
     _const_props = frozenset({'source'})
 
-    source: str
+    source: str = Field(
+        description="Markdown source rendered to static HTML at compile time (raw HTML escaped); build-time constant.",
+    )
 
     def __init__(
         self,

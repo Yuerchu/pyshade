@@ -199,11 +199,18 @@ M2 落地形态(组件铺量期的所有权决策):
 - 版本策略:pytauri 当前 v0.8.0、pre-1.0、约月度 minor 且常带 breaking change,锁定 minor 跟进,
   升级作为显式任务处理。许可证 Apache-2.0,MIT 项目依赖无问题。
 
-### 3.10 文档:单点真相 + dogfooding
+### 3.10 文档:单点真相 + dogfooding(M4 落地形态)
 
-- 组件即 Pydantic model,`model_json_schema()` 直接产出结构化 props 表(字段、类型、默认值、约束、枚举取值),
-  无需 docstring 解析。
-- 同一 schema 生成三份产物:文档站(人)、llms.txt(AI)、类型存根(IDE)。
+- 组件即 Pydantic model,props 表数据源是 **`model_fields` 内省**(`pyshade.docs.introspect`),
+  不走 `model_json_schema()` 直出——JSON schema 表达不了绑定所有权(§3.3 五分类)与 EventSpec
+  事件语义,is-instance union 只会产出无信息的 anyOf。内省给到:注解拆 union → 绑定形态、
+  默认值、枚举取值、事件 kind、`Field(description=...)` 描述;`collect_components()` 与编译器
+  EMITTERS 双向对账(加组件缺 emitter / 缺 DTO 即抛)。
+- **描述语言分层**:`Field(description=英文)` 是 canonical(IDE hover / 生态直读),
+  中文翻译表放文档站侧(键集合对账防漂移);类级 docstring 保持中文。
+- `model_json_schema()` 本身对用户可用(Expr/ServerRef/ClientAction 给宽松占位 schema,
+  EventSpec 以 Annotated 元数据钩子占位 Callable),但只是兼容口,不是文档数据源。
+- 同一内省数据生成三份产物:文档站(人)、llms.txt(AI)、类型存根(IDE,M4+)。
 - i18n 红利:结构化部分语言无关,只有描述文本需要翻译,维护量远小于全手写文档。
 - 编译器提供 desktop 和 web 两个 target,文档站用自家 web target 构建——dogfooding,
   每个组件的 live demo 同时是最大的集成测试。

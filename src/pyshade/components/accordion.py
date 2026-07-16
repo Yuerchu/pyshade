@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import Field
+
 from pyshade.components.base import Component
 from pyshade.expr import Expr
 from pyshade.state import ServerRef
@@ -13,9 +15,12 @@ class AccordionItem(Component):
 
     _shade_tag = 'AccordionItem'
 
-    title: str | Expr[str] | ServerRef[str] = ''
-    value: str = ''
-    children: list[Component] = []
+    title: str | Expr[str] | ServerRef[str] = Field(
+        default='',
+        description="Trigger title; plain value (server-patchable), client expression, or ServerState field.",
+    )
+    value: str = Field(default='', description="Stable item identity for open/close state; defaults to the title.")
+    children: list[Component] = Field(default=[], description="Components rendered inside the item content.")
 
     def __init__(
         self,
@@ -39,8 +44,8 @@ class Accordion(Component):
 
     _shade_tag = 'Accordion'
 
-    multiple: bool = False
-    children: list[Component] = []
+    multiple: bool = Field(default=False, description="Allow multiple items to be open at once.")
+    children: list[Component] = Field(default=[], description="AccordionItem children (enforced at compile time).")
 
     def __init__(
         self,

@@ -6,7 +6,7 @@ Each 同批 M3。str 简写归一化为 value=label 的 Option。
 
 from collections.abc import Sequence
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Option(BaseModel):
@@ -14,8 +14,8 @@ class Option(BaseModel):
 
     model_config = ConfigDict(extra='forbid', frozen=True)
 
-    value: str
-    label: str
+    value: str = Field(description="Value sent back to the server when the option is selected.")
+    label: str = Field(description="Human-readable text displayed for the option.")
 
 
 def normalize_options(options: Sequence[str | Option]) -> list[Option]:

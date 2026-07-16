@@ -7,7 +7,9 @@
 from collections.abc import Callable
 from typing import Any, ClassVar, Generic, TypeVar, cast
 
-from pydantic import BaseModel, ConfigDict, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, GetJsonSchemaHandler, PrivateAttr
+from pydantic.json_schema import JsonSchemaValue
+from pydantic_core import CoreSchema
 
 from pyshade.expr import Expr
 from pyshade.state import ServerRef
@@ -29,6 +31,11 @@ class EventSpec:
     def __init__(self, kind: str) -> None:
         self.kind = kind
 
+    def __get_pydantic_json_schema__(self, schema: CoreSchema, handler: GetJsonSchemaHandler) -> JsonSchemaValue:
+        # 事件字段含 Callable(Handler),JSON schema 无法表达 → 整字段宽松占位,
+        # 让用户侧 model_json_schema() 可用(M4,同 Expr/ServerRef/ClientAction)
+        return {'title': 'EventHandler', 'description': f"'{self.kind}' event handler or zero-IPC client action."}
+
 
 class Component(BaseModel):
     """所有 UI 组件 DTO 的基类。
@@ -36,13 +43,16 @@ class Component(BaseModel):
     - `extra='forbid'`:未知 prop 在用户模块 import 时即 ValidationError。
     - `revalidate_instances` 必须保持 Pydantic 默认 'never':布局的单父检测与
       anchor 刻写依赖实例同一性(children 不深拷贝),L0 测试固化此前提。
-    - `T | Expr[T]` 形态的 prop 走 Expr 的 is-instance schema;已知边界:含 Expr
-      union 的模型无法 model_json_schema()(M4 文档化组件 schema 前解决)。
+    - `T | Expr[T]` 形态的 prop 走 Expr 的 is-instance schema;`model_json_schema()`
+      经宽松占位可用(M4,§3.10),文档 props 表走 docs.introspect 的 model_fields 内省。
     """
 
     model_config = ConfigDict(extra='forbid')
 
-    visible: bool | Expr[bool] | ServerRef[bool] = True
+    visible: bool | Expr[bool] | ServerRef[bool] = Field(
+        default=True,
+        description="Visibility; plain value is server-patchable, expression/ServerState field is client/state-owned.",
+    )
     """普通值 → 服务端 Update 驱动显隐;Expr → 客户端所有,编译为渲染 guard;
     ServerRef → ServerState 字段所有,auto-diff 自动到达(M1)。"""
 

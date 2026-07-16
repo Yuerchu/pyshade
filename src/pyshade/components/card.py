@@ -15,9 +15,12 @@ class Card(Component):
 
     _shade_tag = 'Card'
 
-    title: str | None = None
-    description: str | None = None
-    children: list[Component] = Field(default_factory=list[Component])
+    title: str | None = Field(default=None, description="Optional card title rendered in the header.")
+    description: str | None = Field(default=None, description="Optional card description rendered under the title.")
+    children: list[Component] = Field(
+        default_factory=list[Component],
+        description="Child components rendered inside the card content.",
+    )
 
     def __init__(
         self,

@@ -23,7 +23,8 @@ from dataclasses import field as dc_field
 from typing import Any, ClassVar, Generic, NoReturn, TypeVar, cast, get_origin, overload
 
 from loguru import logger as l
-from pydantic import GetCoreSchemaHandler, TypeAdapter
+from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler, TypeAdapter
+from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema, core_schema, to_jsonable_python
 
 T = TypeVar('T')
@@ -58,6 +59,11 @@ class ServerRef(Generic[T]):
     def __get_pydantic_core_schema__(cls, source: object, handler: GetCoreSchemaHandler) -> CoreSchema:
         # 组件 prop 注解 `T | ServerRef[T]` 按 isinstance 校验;类型匹配由编译器 checks 把关
         return core_schema.is_instance_schema(cls)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema: CoreSchema, handler: GetJsonSchemaHandler) -> JsonSchemaValue:
+        # is-instance 无法 JSON 化;宽松占位让用户侧 model_json_schema() 可用(M4,同 Expr)
+        return {'title': 'ServerRef', 'description': 'ServerState field binding (auto-diff patched).'}
 
     def __eq__(self, other: object) -> NoReturn:
         raise TypeError(

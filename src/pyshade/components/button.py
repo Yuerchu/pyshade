@@ -1,5 +1,7 @@
 from typing import Annotated, Any
 
+from pydantic import Field
+
 from pyshade.actions import ClientAction
 from pyshade.components.base import Component, EventSpec, Handler
 from pyshade.components.enums import ButtonSize, ButtonVariant
@@ -15,12 +17,25 @@ class Button(Component):
 
     _shade_tag = 'Button'
 
-    text: str = ''
-    variant: ButtonVariant = ButtonVariant.DEFAULT
-    size: ButtonSize = ButtonSize.DEFAULT
-    disabled: bool | Expr[bool] | ServerRef[bool] = False
-    submit: bool = False
-    on_click: Annotated[Handler | ClientAction | None, EventSpec('click')] = None
+    text: str = Field(default='', description="Button label; plain value (server-patchable).")
+    variant: ButtonVariant = Field(
+        default=ButtonVariant.DEFAULT,
+        description="Visual variant (shadcn Button variant).",
+    )
+    size: ButtonSize = Field(default=ButtonSize.DEFAULT, description="Size preset (shadcn Button size).")
+    disabled: bool | Expr[bool] | ServerRef[bool] = Field(
+        default=False,
+        description="Disabled state; plain value (server-patchable), client expression, or ServerState field.",
+    )
+    submit: bool = Field(
+        default=False,
+        description="Submit button: event payload carries the page's named input values (incl. sensitive).",
+    )
+    on_click: Annotated[
+        Handler | ClientAction | None,
+        EventSpec('click'),
+        Field(description="Click handler, or a zero-IPC client action (navigate() / set_color_scheme())."),
+    ] = None
 
     def __init__(
         self,

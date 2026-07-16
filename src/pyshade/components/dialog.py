@@ -1,5 +1,7 @@
 from typing import Annotated, Any, ClassVar
 
+from pydantic import Field
+
 from pyshade.components.base import Component, ControlledMixin, EventSpec, Handler
 from pyshade.expr import ClientVal, Expr
 from pyshade.state import ServerRef
@@ -17,11 +19,17 @@ class Dialog(Component, ControlledMixin[bool]):
     _shade_tag = 'Dialog'
     _controlled_prop: ClassVar[str] = 'open'
 
-    trigger: Component | None = None
-    title: str | None = None
-    description: str | None = None
-    open: bool | ClientVal[bool] = False
-    children: list[Component] = []
+    trigger: Component | None = Field(
+        default=None,
+        description="Trigger slot (typically a Button); radix Trigger owns its click, do not bind on_click.",
+    )
+    title: str | None = Field(default=None, description="Optional dialog title.")
+    description: str | None = Field(default=None, description="Optional dialog description.")
+    open: bool | ClientVal[bool] = Field(
+        default=False,
+        description="Open state; bind a ClientVal for controlled state, plain value maps to defaultOpen only.",
+    )
+    children: list[Component] = Field(default=[], description="Dialog body components.")
 
     def __init__(
         self,
@@ -53,15 +61,29 @@ class AlertDialog(Component, ControlledMixin[bool]):
     _shade_tag = 'AlertDialog'
     _controlled_prop: ClassVar[str] = 'open'
 
-    trigger: Component | None = None
-    title: str = ''
-    description: str | None = None
-    confirm_text: str = '确认'
-    cancel_text: str = '取消'
-    destructive: bool = False
-    open: bool | ClientVal[bool] = False
-    on_confirm: Annotated[Handler | None, EventSpec('click')] = None
-    on_cancel: Annotated[Handler | None, EventSpec('click')] = None
+    trigger: Component | None = Field(
+        default=None,
+        description="Trigger slot (typically a Button); radix Trigger owns its click, do not bind on_click.",
+    )
+    title: str = Field(default='', description="Dialog title.")
+    description: str | None = Field(default=None, description="Optional description text.")
+    confirm_text: str = Field(default='确认', description="Label of the confirm button.")
+    cancel_text: str = Field(default='取消', description="Label of the cancel button.")
+    destructive: bool = Field(default=False, description="Render the confirm button in destructive style.")
+    open: bool | ClientVal[bool] = Field(
+        default=False,
+        description="Open state; bind a ClientVal for controlled state, plain value maps to defaultOpen only.",
+    )
+    on_confirm: Annotated[
+        Handler | None,
+        EventSpec('click'),
+        Field(description="Confirm handler; the radix Action closes the dialog automatically."),
+    ] = None
+    on_cancel: Annotated[
+        Handler | None,
+        EventSpec('click'),
+        Field(description="Cancel handler; fires on every cancel path (ESC / overlay / cancel button)."),
+    ] = None
 
     def __init__(
         self,

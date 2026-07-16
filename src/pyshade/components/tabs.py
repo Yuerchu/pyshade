@@ -1,5 +1,7 @@
 from typing import Annotated, Any, ClassVar
 
+from pydantic import Field
+
 from pyshade.components.base import Component, ControlledMixin, EventSpec, Handler
 from pyshade.expr import ClientVal, Expr
 from pyshade.state import ServerRef
@@ -13,9 +15,9 @@ class TabItem(Component):
 
     _shade_tag = 'TabItem'
 
-    label: str = ''
-    value: str = ''
-    children: list[Component] = []
+    label: str = Field(default='', description="Tab trigger label shown in the tab list.")
+    value: str = Field(default='', description="Stable item identity for tab selection; defaults to the label.")
+    children: list[Component] = Field(default=[], description="Components rendered inside the tab content.")
 
     def __init__(
         self,
@@ -42,9 +44,16 @@ class Tabs(Component, ControlledMixin[str]):
     _shade_tag = 'Tabs'
     _controlled_prop: ClassVar[str] = 'value'
 
-    value: str | ClientVal[str] = ''
-    children: list[Component] = []
-    on_change: Annotated[Handler | None, EventSpec('change')] = None
+    value: str | ClientVal[str] = Field(
+        default='',
+        description="Active tab value; bind a ClientVal for controlled state, plain empty string means uncontrolled.",
+    )
+    children: list[Component] = Field(default=[], description="TabItem children (enforced at compile time).")
+    on_change: Annotated[
+        Handler | None,
+        EventSpec('change'),
+        Field(description="Change handler; fires when the active tab changes."),
+    ] = None
 
     def __init__(
         self,

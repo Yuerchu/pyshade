@@ -15,7 +15,7 @@ payload 自动携带 item_index(指定 key 时另带 item_key)。
 from collections.abc import Callable
 from typing import Any, get_args, get_origin, get_type_hints
 
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
 
 from pyshade.components.base import Component, TemplateContainer, read_anchor
 from pyshade.expr import Expr, ExprType, ItemRef
@@ -88,8 +88,13 @@ class Each(Component, TemplateContainer):
 
     _shade_tag = 'Each'
 
-    items: ServerRef[Any]
-    key: str | None = None
+    items: ServerRef[Any] = Field(
+        description="ServerState list field driving the template; replace the whole list to update.",
+    )
+    key: str | None = Field(
+        default=None,
+        description="Optional str/int field of the item model used as the React key; defaults to the index.",
+    )
 
     _template_roots: list[Component] = PrivateAttr(default_factory=list[Component])
     _item_model: type[BaseModel] | None = PrivateAttr(default=None)

@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import Field
+
 from pyshade.components.base import Component
 from pyshade.components.enums import TooltipSide
 from pyshade.expr import Expr
@@ -16,9 +18,15 @@ class Tooltip(Component):
 
     _shade_tag = 'Tooltip'
 
-    text: str | Expr[str] | ServerRef[str] = ''
-    side: TooltipSide = TooltipSide.TOP
-    children: list[Component] = []
+    text: str | Expr[str] | ServerRef[str] = Field(
+        default='',
+        description="Tooltip text; plain value (server-patchable), client expression, or ServerState field.",
+    )
+    side: TooltipSide = Field(default=TooltipSide.TOP, description="Preferred side to render the tooltip on.")
+    children: list[Component] = Field(
+        default=[],
+        description="Exactly one host component; keep its visible True and control visibility on the Tooltip itself.",
+    )
 
     def __init__(
         self,

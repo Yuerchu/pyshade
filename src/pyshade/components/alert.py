@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import Field
+
 from pyshade.components.base import Component
 from pyshade.components.enums import AlertVariant
 from pyshade.expr import Expr
@@ -11,9 +13,12 @@ class Alert(Component):
 
     _shade_tag = 'Alert'
 
-    title: str | Expr[str] | ServerRef[str] = ''
-    description: str | None = None
-    variant: AlertVariant = AlertVariant.DEFAULT
+    title: str | Expr[str] | ServerRef[str] = Field(
+        default='',
+        description="Alert title; plain value (server-patchable), client expression, or ServerState field.",
+    )
+    description: str | None = Field(default=None, description="Optional description text below the title.")
+    variant: AlertVariant = Field(default=AlertVariant.DEFAULT, description="Visual variant (shadcn Alert variant).")
 
     def __init__(
         self,

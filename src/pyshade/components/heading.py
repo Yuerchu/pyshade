@@ -1,5 +1,7 @@
 from typing import Any, Literal
 
+from pydantic import Field
+
 from pyshade.components.base import Component
 from pyshade.expr import Expr
 from pyshade.state import ServerRef
@@ -17,8 +19,14 @@ class Heading(Component):
     _shade_tag = 'Heading'
     _const_props = frozenset({'level'})
 
-    text: str | Expr[str] | ServerRef[str] = ''
-    level: HeadingLevel = 2
+    text: str | Expr[str] | ServerRef[str] = Field(
+        default='',
+        description="Heading text; plain value (server-patchable), client expression, or ServerState field.",
+    )
+    level: HeadingLevel = Field(
+        default=2,
+        description="Heading level (h1-h4); build-time constant fixing the generated element type.",
+    )
 
     def __init__(
         self,

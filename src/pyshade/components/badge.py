@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import Field
+
 from pyshade.components.base import Component
 from pyshade.components.enums import BadgeVariant
 from pyshade.expr import Expr
@@ -11,8 +13,11 @@ class Badge(Component):
 
     _shade_tag = 'Badge'
 
-    text: str | Expr[str] | ServerRef[str] = ''
-    variant: BadgeVariant = BadgeVariant.DEFAULT
+    text: str | Expr[str] | ServerRef[str] = Field(
+        default='',
+        description="Badge text; plain value (server-patchable), client expression, or ServerState field.",
+    )
+    variant: BadgeVariant = Field(default=BadgeVariant.DEFAULT, description="Visual variant (shadcn Badge variant).")
 
     def __init__(
         self,

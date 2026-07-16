@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import Field
+
 from pyshade.components.base import Component
 from pyshade.expr import Expr
 from pyshade.state import ServerRef
@@ -10,8 +12,11 @@ class Text(Component):
 
     _shade_tag = 'Text'
 
-    text: str | Expr[str] | ServerRef[str] = ''
-    muted: bool = False
+    text: str | Expr[str] | ServerRef[str] = Field(
+        default='',
+        description="Text content; plain value (server-patchable), client expression, or ServerState field.",
+    )
+    muted: bool = Field(default=False, description="Render with muted foreground color.")
 
     def __init__(
         self,

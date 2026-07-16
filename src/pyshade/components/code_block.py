@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import Field
+
 from pyshade.components.base import Component
 from pyshade.expr import Expr
 from pyshade.state import ServerRef
@@ -15,8 +17,11 @@ class CodeBlock(Component):
     _shade_tag = 'CodeBlock'
     _const_props = frozenset({'code', 'language'})
 
-    code: str
-    language: str = 'text'
+    code: str = Field(description="Source code to highlight at compile time; build-time constant.")
+    language: str = Field(
+        default='text',
+        description="Pygments language name; build-time constant, unknown names fail the build.",
+    )
 
     def __init__(
         self,

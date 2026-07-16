@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 
 from pyshade.components.base import Component
 from pyshade.expr import Expr
@@ -20,8 +20,8 @@ class Link(Component):
     _shade_tag = 'Link'
     _const_props = frozenset({'text', 'href'})
 
-    text: str
-    href: str
+    text: str = Field(description="Link text; build-time constant.")
+    href: str = Field(description="External URL (http(s)/mailto only); build-time constant.")
 
     def __init__(
         self,

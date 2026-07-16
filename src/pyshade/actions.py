@@ -11,7 +11,8 @@ set_color_scheme() 切配色。共性收拢在 ClientAction:
 
 from typing import NoReturn
 
-from pydantic import GetCoreSchemaHandler
+from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler
+from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema, core_schema
 
 
@@ -24,6 +25,11 @@ class ClientAction:
     def __get_pydantic_core_schema__(cls, source: object, handler: GetCoreSchemaHandler) -> CoreSchema:
         # 事件 prop 注解 `Handler | ClientAction | None` 时按 isinstance 校验
         return core_schema.is_instance_schema(cls)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema: CoreSchema, handler: GetJsonSchemaHandler) -> JsonSchemaValue:
+        # is-instance 无法 JSON 化;宽松占位让用户侧 model_json_schema() 可用(M4,同 Expr)
+        return {'title': 'ClientAction', 'description': 'Zero-IPC client action (navigate / set_color_scheme).'}
 
     def __bool__(self) -> NoReturn:
         raise TypeError(f"{type(self).__name__} 不能用于条件判断;它只能赋给事件 prop(如 on_click=)")

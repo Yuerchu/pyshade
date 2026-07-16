@@ -1,5 +1,7 @@
 from typing import Annotated, Any, ClassVar
 
+from pydantic import Field
+
 from pyshade.components.base import Component, ControlledMixin, EventSpec, Handler
 from pyshade.expr import ClientVal, Expr
 from pyshade.state import ServerRef
@@ -14,11 +16,21 @@ class Input(Component, ControlledMixin[str]):
     _shade_tag = 'Input'
     _controlled_prop: ClassVar[str] = 'value'
 
-    label: str | None = None
-    placeholder: str | None = None
-    value: str | ClientVal[str] = ''
-    disabled: bool | Expr[bool] | ServerRef[bool] = False
-    on_change: Annotated[Handler | None, EventSpec('change')] = None
+    label: str | None = Field(default=None, description="Optional label rendered above the input.")
+    placeholder: str | None = Field(default=None, description="Placeholder text shown when the input is empty.")
+    value: str | ClientVal[str] = Field(
+        default='',
+        description="Text value; bind a ClientVal for client-owned controlled state (keystrokes stay client-side).",
+    )
+    disabled: bool | Expr[bool] | ServerRef[bool] = Field(
+        default=False,
+        description="Disabled state; plain value (server-patchable), client expression, or ServerState field.",
+    )
+    on_change: Annotated[
+        Handler | None,
+        EventSpec('change'),
+        Field(description="Change handler with DOM change semantics (fires on blur commit, not per keystroke)."),
+    ] = None
 
     def __init__(
         self,
@@ -52,9 +64,12 @@ class PasswordInput(Component):
     _shade_tag = 'PasswordInput'
     _sensitive: ClassVar[bool] = True
 
-    label: str | None = None
-    placeholder: str | None = None
-    disabled: bool | Expr[bool] | ServerRef[bool] = False
+    label: str | None = Field(default=None, description="Optional label rendered above the input.")
+    placeholder: str | None = Field(default=None, description="Placeholder text shown when the input is empty.")
+    disabled: bool | Expr[bool] | ServerRef[bool] = Field(
+        default=False,
+        description="Disabled state; plain value (server-patchable), client expression, or ServerState field.",
+    )
 
     def __init__(
         self,

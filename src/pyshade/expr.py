@@ -22,7 +22,8 @@ from collections.abc import Mapping
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Generic, Literal, NoReturn, TypeVar, cast, overload
 
-from pydantic import GetCoreSchemaHandler
+from pydantic import GetCoreSchemaHandler, GetJsonSchemaHandler
+from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema, core_schema
 
 if TYPE_CHECKING:
@@ -103,8 +104,13 @@ class Expr(Generic[T]):
     def __get_pydantic_core_schema__(cls, source: object, handler: GetCoreSchemaHandler) -> CoreSchema:
         # 组件 prop 注解 `T | Expr[T]` 时按 isinstance 校验(泛型参数不参与运行时校验,
         # 表达式与 prop 的类型匹配由编译器 checks 把关)。
-        # 已知边界:is_instance schema 无法进 model_json_schema(),M4 文档化组件 schema 前解决。
         return core_schema.is_instance_schema(cls)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema: CoreSchema, handler: GetJsonSchemaHandler) -> JsonSchemaValue:
+        # is-instance 无法 JSON 化;给宽松占位让用户侧 model_json_schema() 可用(M4)。
+        # 文档 props 表不走 JSON schema(表达不了绑定所有权),走 docs.introspect 的 model_fields 内省。
+        return {'title': 'Expr', 'description': 'Client-side expression (compiled to JS).'}
 
     # ---- 逻辑运算(仅 BOOL) ----
 

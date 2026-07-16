@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import Field
+
 from pyshade.components.base import Component
 from pyshade.components.enums import Orientation
 from pyshade.expr import Expr
@@ -11,7 +13,10 @@ class Separator(Component):
 
     _shade_tag = 'Separator'
 
-    orientation: Orientation = Orientation.HORIZONTAL
+    orientation: Orientation = Field(
+        default=Orientation.HORIZONTAL,
+        description="Separator orientation (horizontal or vertical).",
+    )
 
     def __init__(
         self,

@@ -1,5 +1,7 @@
 from typing import Any
 
+from pydantic import Field
+
 from pyshade.components.base import Component
 from pyshade.expr import Expr
 from pyshade.state import ServerRef
@@ -10,7 +12,10 @@ class Progress(Component):
 
     _shade_tag = 'Progress'
 
-    value: int | float | Expr[int] | Expr[float] | ServerRef[int] | ServerRef[float] = 0
+    value: int | float | Expr[int] | Expr[float] | ServerRef[int] | ServerRef[float] = Field(
+        default=0,
+        description="Progress value (0-100); plain value (server-patchable), client expression, or ServerState field.",
+    )
 
     def __init__(
         self,
