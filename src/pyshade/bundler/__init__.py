@@ -2,8 +2,14 @@
 
 用户环境只有 Python + pip:esbuild 官方二进制(下载缓存)、wheel 内 _frontend 源码与
 物化 vendor(NODE_PATH 解析)、预编译 style.css。产物 dist/ 即 pytauri frontendDist。
+
+M4 窄版增量:staging 指纹跳 copytree + esbuild 输入内容哈希跳全量构建(`.bundle-stamp.json`,
+成功后才写,崩溃安全);`PYSHADE_BUNDLE_FRESH=1` 逃生。index.html/style.css 每次照常重写
+(theme/scheme/dev-client 注入不受跳过影响,幂等且廉价)。
 """
 
+import hashlib
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -14,12 +20,14 @@ from loguru import logger as l
 from pyshade.app import ShadeApp
 from pyshade.bundler._assets import FrontendAssets, locate_assets
 from pyshade.bundler._entry import emit_entry_tsx, emit_tsconfig
-from pyshade.bundler._esbuild import ensure_esbuild, run_esbuild
+from pyshade.bundler._esbuild import ESBUILD_VERSION, ensure_esbuild, run_esbuild
 from pyshade.bundler._html import write_static
 from pyshade.bundler._staging import prepare_staging
 from pyshade.compiler import compile_app
 
 __all__ = ['BundleResult', 'bundle_app', 'bundle_testkit']
+
+_BUNDLE_STAMP = '.bundle-stamp.json'
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +35,10 @@ class BundleResult:
     out_dir: Path
     app_js_bytes: int
     duration_ms: float
+    staging_ms: float = 0.0
+    compile_ms: float = 0.0
+    esbuild_ms: float = 0.0
+    esbuild_skipped: bool = False
 
 
 def esbuild_args(*, entry: str, outfile: Path, dev: bool) -> list[str]:
@@ -49,6 +61,27 @@ def esbuild_args(*, entry: str, outfile: Path, dev: bool) -> list[str]:
     return args
 
 
+def _esbuild_input_hash(work: Path, *, staging_stamp: str, args: list[str], node_path: str) -> str:
+    """esbuild 输入指纹:staged 源码指纹 + generated/entry/tsconfig 全部内容 + 版本与参数。
+
+    漏项即错误跳过——输入面全列;theme.gen.css 在 generated 目录内,天然入哈希。
+    """
+    digest = hashlib.sha256()
+    digest.update(f'esbuild {ESBUILD_VERSION}\n'.encode())
+    digest.update(('args ' + ' '.join(args) + '\n').encode())
+    digest.update(f'staging {staging_stamp}\n'.encode())
+    digest.update(f'node_path {node_path}\n'.encode())
+    for rel in ('src/entry.tsx', 'tsconfig.json'):
+        digest.update(f'::{rel}\n'.encode())
+        digest.update((work / rel).read_bytes())
+    generated = work / 'src' / 'generated'
+    for path in sorted(generated.rglob('*')):
+        if path.is_file():
+            digest.update(f'::{path.relative_to(generated).as_posix()}\n'.encode())
+            digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
 def bundle_app(
     app: ShadeApp,
     out_dir: str | Path,
@@ -62,16 +95,34 @@ def bundle_app(
     work = Path(workdir).absolute()
     assets: FrontendAssets = locate_assets()
 
-    prepare_staging(work, assets)
+    staging_fingerprint = prepare_staging(work, assets)
+    t_staged = time.monotonic()
     compile_app(app, work / 'src' / 'generated')
     (work / 'src' / 'entry.tsx').write_text(emit_entry_tsx(app), encoding='utf-8', newline='\n')
     (work / 'tsconfig.json').write_text(emit_tsconfig(), encoding='utf-8', newline='\n')
+    t_compiled = time.monotonic()
 
     esbuild = ensure_esbuild()
     out.mkdir(parents=True, exist_ok=True)
-    args = esbuild_args(entry='src/entry.tsx', outfile=out / 'app.js', dev=dev)
-    env = {**os.environ, 'NODE_PATH': str(assets.node_modules)}
-    run_esbuild(esbuild, args, cwd=work, env=env)
+    outfile = out / 'app.js'
+    args = esbuild_args(entry='src/entry.tsx', outfile=outfile, dev=dev)
+    node_path = str(assets.node_modules)
+
+    input_hash = _esbuild_input_hash(work, staging_stamp=staging_fingerprint, args=args, node_path=node_path)
+    stamp_file = work / _BUNDLE_STAMP
+    fresh_forced = os.environ.get('PYSHADE_BUNDLE_FRESH') == '1'
+    skipped = False
+    if not fresh_forced and outfile.is_file() and stamp_file.is_file():
+        try:
+            recorded: object = json.loads(stamp_file.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            recorded = None
+        skipped = recorded == {'hash': input_hash}
+    if not skipped:
+        env = {**os.environ, 'NODE_PATH': node_path}
+        run_esbuild(esbuild, args, cwd=work, env=env)
+        stamp_file.write_text(json.dumps({'hash': input_hash}), encoding='utf-8', newline='\n')
+    t_bundled = time.monotonic()
 
     theme_css: str | None = None
     if app.theme is not None:
@@ -81,9 +132,27 @@ def bundle_app(
     write_static(out, assets, theme_css=theme_css, color_scheme=app.color_scheme)
 
     duration = (time.monotonic() - started) * 1000
-    size = (out / 'app.js').stat().st_size
-    l.info("pyshade bundle: {} ({:.0f} KB, {:.0f} ms)", out, size / 1024, duration)
-    return BundleResult(out_dir=out, app_js_bytes=size, duration_ms=duration)
+    size = outfile.stat().st_size
+    result = BundleResult(
+        out_dir=out,
+        app_js_bytes=size,
+        duration_ms=duration,
+        staging_ms=(t_staged - started) * 1000,
+        compile_ms=(t_compiled - t_staged) * 1000,
+        esbuild_ms=(t_bundled - t_compiled) * 1000,
+        esbuild_skipped=skipped,
+    )
+    l.info(
+        "pyshade bundle: {} ({:.0f} KB, {:.0f} ms = staging {:.0f} / compile {:.0f} / esbuild {:.0f}{})",
+        out,
+        size / 1024,
+        duration,
+        result.staging_ms,
+        result.compile_ms,
+        result.esbuild_ms,
+        ' [skipped]' if skipped else '',
+    )
+    return result
 
 
 def bundle_testkit(out_file: str | Path, *, workdir: str | Path = '.pyshade/testkit-build') -> Path:

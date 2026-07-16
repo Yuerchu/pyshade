@@ -32,12 +32,11 @@ def worker_main(argv: list[str]) -> int:
     workdir = Path(args.workdir).absolute()
     dist = workdir / 'dist'
 
-    # 阶段计时:dev loop 延迟基线(design.md §4 增量编译的观测前提)
+    # 阶段计时:dev loop 延迟基线(design.md §4;M4 起 esbuild 命中内容哈希即跳过)
     t0 = time.monotonic()
     app = load_app(args.app)
     t1 = time.monotonic()
-    bundle_app(app, dist, dev=True, workdir=workdir / 'build')
-    t2 = time.monotonic()
+    bundle = bundle_app(app, dist, dev=True, workdir=workdir / 'build')
 
     index = dist / 'index.html'
     index.write_text(inject_dev_client(index.read_text(encoding='utf-8')), encoding='utf-8', newline='\n')
@@ -47,10 +46,15 @@ def worker_main(argv: list[str]) -> int:
     generation = uuid.uuid4().hex
     dispatcher = make_dev_asgi(fastapi_app, dist, generation)
     l.info(
-        "pyshade dev: 就绪 http://127.0.0.1:{}(import {:.0f}ms / bundle {:.0f}ms,generation {})",
+        "pyshade dev: 就绪 http://127.0.0.1:{}(import {:.0f}ms / bundle {:.0f}ms = "
+        "staging {:.0f} + compile {:.0f} + esbuild {:.0f}{},generation {})",
         args.port,
         (t1 - t0) * 1000,
-        (t2 - t1) * 1000,
+        bundle.duration_ms,
+        bundle.staging_ms,
+        bundle.compile_ms,
+        bundle.esbuild_ms,
+        ' [skipped]' if bundle.esbuild_skipped else '',
         generation[:8],
     )
 
