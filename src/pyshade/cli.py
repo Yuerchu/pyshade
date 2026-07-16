@@ -134,6 +134,12 @@ def main() -> None:
     package_parser.add_argument('--python-version', default=None, help='便携 CPython 版本(缺省用 pin 值)')
     package_parser.add_argument('--pbs-release', default=None, help='python-build-standalone release 标签')
 
+    serve_parser = sub.add_parser('serve', help='生产 web 伺服:bundle + 静态 + /_shade/*(单进程,多客户端共享状态)')
+    serve_parser.add_argument('app', help='模块路径:属性名(如 myapp.app:app)')
+    serve_parser.add_argument('--host', default='127.0.0.1', help="监听地址(对外部署用 0.0.0.0)")
+    serve_parser.add_argument('--port', type=int, default=8000, help='监听端口')
+    serve_parser.add_argument('--workdir', default='.pyshade/serve', help='bundle 工作目录')
+
     dev_parser = sub.add_parser('dev', help='开发模式:监听源码 → 重编译 → 浏览器自动刷新(HTTP,不开原生窗口)')
     dev_parser.add_argument('app', help='模块路径:属性名(如 myapp.app:app)')
     dev_parser.add_argument('--port', type=int, default=8765, help='dev server 端口')
@@ -153,6 +159,10 @@ def main() -> None:
         _init(args)
     elif args.command == 'package':
         _package(args)
+    elif args.command == 'serve':
+        from pyshade.web import run_serve
+
+        raise SystemExit(run_serve(args.app, host=args.host, port=args.port, workdir=Path(args.workdir)))
     elif args.command == 'dev':
         from pyshade.dev import run_dev
 

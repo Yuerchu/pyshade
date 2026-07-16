@@ -214,6 +214,12 @@ M2 落地形态(组件铺量期的所有权决策):
 - i18n 红利:结构化部分语言无关,只有描述文本需要翻译,维护量远小于全手写文档。
 - 编译器提供 desktop 和 web 两个 target,文档站用自家 web target 构建——dogfooding,
   每个组件的 live demo 同时是最大的集成测试。
+- **web target 最小形态(M4):`pyshade serve`**——生产 bundle + 单进程 uvicorn,
+  dispatcher = `/_shade/*` → FastAPI(事件 + SSE 推送),其余 → 静态三件套
+  (`web/_serve.make_web_asgi`;dev dispatcher 复用它再叠 dev 路由)。共享语义如实声明:
+  ServerState 是进程级单例(§3.3),多浏览器客户端共享同一份状态宇宙(请求外变更经
+  PatchBus 广播、重连快照收敛);per-visitor session 隔离是独立工作线(§6),
+  读多写少的站点(文档站)可直接用。
 
 ### 3.11 多页面路由(M2 定案)
 
@@ -367,7 +373,9 @@ M0 是风险所在,M2 之后是体力活;先验证再铺量。
   附未签名产物的打开指引。
 - 服务端弹窗:`open` 归客户端所有(§3.3),服务端想主动弹窗(全局错误/更新提示)缺正门,
   语义与 `$nav` 类似的保留地址是候选。
-- web target 的优先级:仅服务文档站,还是作为正式发布特性。
+- web target 的深化:最小形态 `pyshade serve` 已落地(§3.10,M4);开放点是 per-visitor
+  session 隔离(要动 ServerState 单例/全局 publisher/快照全套,非小补丁)与生产化增强
+  (gzip/cache 头/多 worker)。
 - Link 外链在桌面 WebView 应转系统浏览器打开(当前 target="_blank" 行为依 WebView 而定),
   需要壳层 opener 接线(§3.13)。
 - 运行时动态 markdown(ServerRef 驱动的内容,LLM 聊天类场景):当前 Markdown 是编译期

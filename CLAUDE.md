@@ -48,8 +48,9 @@
   `bundler/`(零 Node 管线:esbuild/staging/entry/assets)、`packager/`(standalone 安装包:
   _cpython 获取链/_scaffold 模板/_platform 修补/_pyembed 装配/_tauri_cli,§3.12)、
   `shell.py`(运行时壳层 shim,standalone/wheel 双形态)、`docs/`(introspect:model_fields
-  内省 → ComponentDoc/FieldDoc,与 EMITTERS 双向对账,§3.10)、`testing/`(真机 E2E harness)、
-  `cli.py`(build/bundle/init/package)
+  内省 → ComponentDoc/FieldDoc,与 EMITTERS 双向对账,§3.10)、`web/`(serve:生产 web
+  dispatcher,dev 复用 + 叠 dev 路由;多客户端共享 ServerState)、`testing/`(真机 E2E
+  harness)、`cli.py`(build/bundle/init/package/serve/dev)
 - 前端 runtime 边界:`patches.ts`(mergePatches + `$nav` 保留地址)、`store.ts`(App 级共享 store
   context)、`app.tsx`(ShadeAppProvider/ShadeRouter,push 订阅提升 App 层)、`page.ts`
   (usePageRuntime 双模式:有 Provider 走共享 store,无则页面本地)、`scheme.ts`(配色纯函数:

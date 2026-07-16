@@ -2,8 +2,8 @@
 
 - `/_shade/dev/events`:SSE,首帧 `{"generation": ...}`,之后周期 ping 保活;
 - `/_shade/dev/client.js`:内置重载客户端(断线重连,generation 变化即整页 reload);
-- `/_shade/*`:转发用户 FastAPI app(lifespan 一并转发);
-- 其余:dist 静态文件(html=True,`/` 即 index.html)。
+- 其余(含 lifespan)委托生产 web dispatcher(web/_serve.make_web_asgi):
+  `/_shade/*` → 用户 app,静态 → dist。
 """
 
 import json
@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import Any
 
 import anyio
-from starlette.staticfiles import StaticFiles
 
 from pyshade.asgi._types import ASGIApp, Receive, Scope, Send
+from pyshade.web import make_web_asgi
 
 _PING_INTERVAL_S = 15.0
 
@@ -77,20 +77,15 @@ async def _sse_events(receive: Receive, send: Send, generation: str) -> None:
 
 
 def make_dev_asgi(user_app: ASGIApp, dist_dir: Path, generation: str) -> ASGIApp:
-    static = StaticFiles(directory=dist_dir, html=True)
+    base = make_web_asgi(user_app, dist_dir)
 
     async def app(scope: Scope, receive: Receive, send: Send) -> None:
-        if scope['type'] == 'lifespan':
-            await user_app(scope, receive, send)
-            return
-        path: Any = scope.get('path', '')
+        path: Any = scope.get('path', '') if scope['type'] == 'http' else ''
         if path == '/_shade/dev/events':
             await _sse_events(receive, send, generation)
         elif path == '/_shade/dev/client.js':
             await _send_text(send, 200, b'application/javascript; charset=utf-8', DEV_CLIENT_JS.encode())
-        elif isinstance(path, str) and path.startswith('/_shade/'):
-            await user_app(scope, receive, send)
         else:
-            await static(scope, receive, send)
+            await base(scope, receive, send)
 
     return app
