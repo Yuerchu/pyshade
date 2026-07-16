@@ -18,7 +18,7 @@
   `keep_alive=True` 保活(display:none);`#/PageName` 深链(生成 App 恒开,runtime 默认关);
   color scheme 同族归客户端(M4):class 策略 + `set_color_scheme()/toggle_color_scheme()` 零 IPC
   action(ClientAction 基类)+ localStorage 显式选择,`Theme(dark=ThemeTokens(...))` 暗色 token
-- 内容组件(§3.13,M4):Heading/Link/Markdown/CodeBlock;markdown/高亮在**编译期**渲染
+- 内容组件(§3.13,M4):Heading/Link/Markdown/CodeBlock/Stack(文档流布局容器);markdown/高亮在**编译期**渲染
   (mistune+pygments 挂 `pyshade[content]` extra,escape=True 拒 raw HTML);样式走
   @tailwindcss/typography prose(只进 CSS 预编译)+ `.shade-hl` 作用域化高亮 token
 - standalone 打包(§3.12):`pyshade init`(src-tauri 模板)+ `pyshade package`(便携 CPython +

@@ -33,6 +33,7 @@ from pyshade.components.select import Select
 from pyshade.components.separator import Separator
 from pyshade.components.skeleton import Skeleton
 from pyshade.components.slider import Slider
+from pyshade.components.stack import Stack
 from pyshade.components.switch import Switch
 from pyshade.components.tabs import TabItem, Tabs
 from pyshade.components.text import Text
@@ -73,6 +74,7 @@ __all__ = [
     'Separator',
     'Skeleton',
     'Slider',
+    'Stack',
     'Switch',
     'TabItem',
     'Tabs',

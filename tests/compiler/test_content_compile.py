@@ -6,7 +6,7 @@ from pyshade.compiler.checks import check_page_ir
 from pyshade.compiler.emit_page import emit_page
 from pyshade.compiler.errors import CompileError
 from pyshade.compiler.ir import build_page_ir, iter_node_irs
-from pyshade.components import Card, CodeBlock, Heading, Link, Markdown, Switch, Text
+from pyshade.components import Card, CodeBlock, Heading, Link, Markdown, Stack, Switch, Text
 from pyshade.expr import ClientVal
 from pyshade.page import Page
 from tests.compiler.test_compiler import golden_compare
@@ -56,7 +56,7 @@ class MarkdownContentPage(Page):
     snippet = CodeBlock('SELECT 1;\n', language='sql')
     plain = CodeBlock('纯文本,无高亮')
 
-    card = Card(doc, xss, snippet, plain, title='Markdown')
+    body = Stack(doc, xss, snippet, plain)
 
 
 class TestMarkdownGolden:
@@ -64,6 +64,9 @@ class TestMarkdownGolden:
         ir = build_page_ir(MarkdownContentPage)
         check_page_ir(ir)
         tsx = emit_page(ir)
+        # Stack 文档流容器(md 档位 = max-w-3xl,width 是 const 不发 rt.ov)
+        assert '<section className="flex w-full max-w-3xl flex-col gap-4">' in tsx
+        assert '"width"' not in tsx
         # prose 样式挂载 + 编译期渲染(dangerouslySetInnerHTML 内联静态 HTML)
         assert 'prose prose-neutral dark:prose-invert max-w-none' in tsx
         assert '<table>' in tsx

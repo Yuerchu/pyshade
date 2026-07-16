@@ -21,8 +21,8 @@ class TestRegistry:
         assert set(DOCS) == set(EMITTERS)
 
     def test_component_count(self) -> None:
-        # 29 个 DTO 类(营销口径 26 = 不含 TabItem/AccordionItem 子槽件与 PasswordInput 变体)
-        assert len(DOCS) == 29
+        # 30 个 DTO 类(营销口径 27 = 不含 TabItem/AccordionItem 子槽件与 PasswordInput 变体)
+        assert len(DOCS) == 30
 
     def test_docstrings_present(self) -> None:
         for doc in DOCS.values():

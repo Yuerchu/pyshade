@@ -1,0 +1,192 @@
+# 组件字段描述的中文翻译表(键集合与 docs.introspect 对账,tests/docs_site 防漂移)
+
+[Accordion]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+multiple = "是否允许同时展开多个条目。"
+children = "子组件须全部为 AccordionItem(编译期强制)。"
+
+[AccordionItem]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+title = "触发器标题;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+value = "条目开合状态的稳定标识;缺省取 title。"
+children = "渲染在条目内容区中的组件。"
+
+[Alert]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+title = "提示标题;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+description = "标题下方的可选描述文本。"
+variant = "视觉变体(shadcn Alert variant)。"
+
+[AlertDialog]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+trigger = "触发器插槽(通常为 Button);radix Trigger 接管点击,不要再绑 on_click。"
+title = "弹窗标题。"
+description = "可选的描述文本。"
+confirm_text = "确认按钮的文字。"
+cancel_text = "取消按钮的文字。"
+destructive = "以危险操作(destructive)样式渲染确认按钮。"
+open = "打开状态;绑定 ClientVal 为受控,普通值仅映射为 defaultOpen。"
+on_confirm = "确认 handler;radix Action 会自动关闭弹窗。"
+on_cancel = "取消 handler;所有取消路径(ESC / 遮罩 / 取消按钮)都会触发。"
+
+[Badge]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+text = "徽标文本;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+variant = "视觉变体(shadcn Badge variant)。"
+
+[Button]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+text = "按钮文字;普通值(服务端可 patch)。"
+variant = "视觉变体(shadcn Button variant)。"
+size = "尺寸档位(shadcn Button size)。"
+disabled = "禁用状态;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+submit = "提交按钮:事件 payload 携带页面上具名输入组件的值(含敏感输入)。"
+on_click = "点击 handler,或零 IPC 客户端 action(navigate() / set_color_scheme())。"
+
+[Card]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+title = "可选的卡片标题,渲染在头部。"
+description = "可选的卡片描述,渲染在标题下方。"
+children = "渲染在卡片内容区中的子组件。"
+
+[Checkbox]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+label = "可选标签,渲染在复选框旁。"
+checked = "勾选状态;绑定 ClientVal 为客户端所有的受控状态。"
+disabled = "禁用状态;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+on_change = "变更 handler;每次切换都会触发。"
+
+[CodeBlock]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+code = "编译期高亮的源代码;构建期常量。"
+language = "Pygments 语言名;构建期常量,未知名称会导致构建失败。"
+
+[Dialog]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+trigger = "触发器插槽(通常为 Button);radix Trigger 接管点击,不要再绑 on_click。"
+title = "可选的弹窗标题。"
+description = "可选的弹窗描述。"
+open = "打开状态;绑定 ClientVal 为受控,普通值仅映射为 defaultOpen。"
+children = "弹窗主体组件。"
+
+[Each]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+items = "驱动模板的 ServerState 列表字段;更新时须整体替换列表。"
+key = "可选,项模型中用作 React key 的 str/int 字段;缺省用索引。"
+
+[Heading]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+text = "标题文本;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+level = "标题级别(h1-h4);构建期常量,固定生成的元素类型。"
+
+[Input]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+label = "可选标签,渲染在输入框上方。"
+placeholder = "输入框为空时显示的占位文本。"
+value = "文本值;绑定 ClientVal 为客户端所有的受控状态(按键不出客户端)。"
+disabled = "禁用状态;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+on_change = "变更 handler,遵循 DOM change 语义(blur 提交时触发,而非逐次按键)。"
+
+[Link]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+text = "链接文本;构建期常量。"
+href = "外部 URL(仅限 http(s)/mailto);构建期常量。"
+
+[Markdown]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+source = "Markdown 源文本,编译期渲染为静态 HTML(raw HTML 会被转义);构建期常量。"
+
+[PasswordInput]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+label = "可选标签,渲染在输入框上方。"
+placeholder = "输入框为空时显示的占位文本。"
+disabled = "禁用状态;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+
+[Progress]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+value = "进度值(0-100);可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+
+[RadioGroup]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+label = "可选的组标签。"
+options = "可选项列表;服务端可通过 Update 整体替换。"
+value = "选中项的值;绑定 ClientVal 为客户端所有的受控状态。"
+disabled = "禁用状态;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+on_change = "变更 handler;选中即触发。"
+
+[ScrollArea]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+height = "固定视口高度,CSS 长度字符串(如 '16rem')。"
+children = "渲染在滚动视口内的子组件。"
+
+[Select]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+label = "可选标签,渲染在下拉框上方。"
+placeholder = "未选中任何值时显示的占位文本。"
+options = "可选项列表;服务端可通过 Update 整体替换。"
+value = "选中项的值;绑定 ClientVal 为客户端所有的受控状态。"
+disabled = "禁用状态;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+on_change = "变更 handler;选中即触发。"
+
+[Separator]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+orientation = "分隔线方向(horizontal 或 vertical)。"
+
+[Skeleton]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+width = "宽度,CSS 长度字符串(如 '8rem'、'100%')。"
+height = "高度,CSS 长度字符串(如 '1rem')。"
+
+[Slider]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+label = "可选标签,渲染在滑杆上方。"
+value = "数值;绑定 ClientVal 为客户端所有的受控状态(拖动不出客户端)。"
+min = "最小值。"
+max = "最大值。"
+step = "步进值。"
+disabled = "禁用状态;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+on_change = "变更 handler;松手时触发(onValueCommit),拖动过程中不触发。"
+
+[Stack]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+children = "纵向排列的子组件(列向 flex,gap-4)。"
+width = "内容列宽档位(sm/md/lg/full);构建期常量。"
+
+[Switch]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+label = "可选标签,渲染在开关旁。"
+checked = "勾选状态;绑定 ClientVal 为客户端所有的受控状态。"
+disabled = "禁用状态;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+on_change = "变更 handler;每次切换都会触发。"
+
+[TabItem]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+label = "显示在标签栏中的触发器文字。"
+value = "标签选中状态的稳定标识;缺省取 label。"
+children = "渲染在标签内容区中的组件。"
+
+[Tabs]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+value = "当前激活标签的值;绑定 ClientVal 为受控,普通空字符串表示非受控。"
+children = "子组件须全部为 TabItem(编译期强制)。"
+on_change = "变更 handler;激活标签变化时触发。"
+
+[Text]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+text = "文本内容;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+muted = "以弱化(muted)前景色渲染。"
+
+[Textarea]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+label = "可选标签,渲染在文本域上方。"
+placeholder = "文本域为空时显示的占位文本。"
+value = "文本值;绑定 ClientVal 为客户端所有的受控状态(按键不出客户端)。"
+rows = "可见文本行数。"
+disabled = "禁用状态;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+on_change = "变更 handler,遵循 DOM change 语义(blur 提交时触发,而非逐次按键)。"
+
+[Tooltip]
+visible = "可见性;普通值为服务端可 patch,表达式/ServerState 字段归客户端/状态所有。"
+text = "提示文本;可为普通值(服务端可 patch)、客户端表达式或 ServerState 字段。"
+side = "提示气泡的优先渲染方位。"
+children = "恰好一个宿主组件;保持其 visible 为 True,显隐控制放在 Tooltip 自身上。"

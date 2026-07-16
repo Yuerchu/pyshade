@@ -1,4 +1,4 @@
-"""组件画廊:26 个组件 + Each + 路由全铺开。
+"""组件画廊:27 个组件 + Each + 路由全铺开。
 
 这个 example 的首要职责是给 CI 提供"真实 tsc"校验面——生成代码的每种发射形态
 (受控 useState、选项 map、asChild 槽、多槽容器、.map 模板、rt.navigate、const 字面量、
@@ -38,6 +38,7 @@ from pyshade.components import (
     Separator,
     Skeleton,
     Slider,
+    Stack,
     Switch,
     TabItem,
     Tabs,
@@ -57,7 +58,7 @@ class WidgetsPage(Page):
     heading = Heading('组件画廊 — 展示件', level=1)
     intro = Text('每种发射形态在四个页面各出现一次')
     tag = Badge('M4', variant=BadgeVariant.SECONDARY)
-    notice = Alert('提示', description='四个页面覆盖全部 26 个组件', variant=AlertVariant.DEFAULT)
+    notice = Alert('提示', description='四个页面覆盖全部 27 个组件', variant=AlertVariant.DEFAULT)
     divider = Separator(orientation=Orientation.HORIZONTAL)
     placeholder = Skeleton(width='10rem', height='1.25rem')
     upload = Progress(GalleryDemoState.upload_pct)
@@ -187,6 +188,7 @@ class StructurePage(Page):
         multiple=True,
     )
     logs = ScrollArea(Text('日志 1'), Text('日志 2'), height='8rem')
+    column = Stack(Text('Stack:纵向文档流容器(md 列宽)'), Text('无边框卡片语义', muted=True), width='full')
     changelog = Each(GalleryDemoState.changelog, render=_changelog_template)
     back = Button('返回展示件', variant=ButtonVariant.GHOST, on_click=navigate('WidgetsPage'))
 
@@ -194,8 +196,9 @@ class StructurePage(Page):
         panels,
         faq,
         logs,
+        column,
         changelog,
         back,
         title='结构件',
-        description='Tabs / Accordion / ScrollArea / Each',
+        description='Tabs / Accordion / ScrollArea / Stack / Each',
     )

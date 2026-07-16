@@ -214,6 +214,11 @@ M2 落地形态(组件铺量期的所有权决策):
 - i18n 红利:结构化部分语言无关,只有描述文本需要翻译,维护量远小于全手写文档。
 - 编译器提供 desktop 和 web 两个 target,文档站用自家 web target 构建——dogfooding,
   每个组件的 live demo 同时是最大的集成测试。
+- **静态站 demo mock(M4 文档站,显式决策)**:CF Pages 静态托管无 Python 后端,
+  `shadeFetch` 浏览器分支先问 `window.__PYSHADE_MOCK__(path, init)`——返回 Response 即短路
+  (事件 envelope / push SSE 全链路照常),undefined 回落真实 fetch。文档站的
+  demo-mock.js 按 handlerId 复刻 handlers.py 行为——接受"违背单点真相"的双份维护
+  (用户拍板),键集合对账测试兜"缺口",行为漂移靠 `pyshade dev`(真后端)人工走查。
 - **web target 最小形态(M4):`pyshade serve`**——生产 bundle + 单进程 uvicorn,
   dispatcher = `/_shade/*` → FastAPI(事件 + SSE 推送),其余 → 静态三件套
   (`web/_serve.make_web_asgi`;dev dispatcher 复用它再叠 dev 路由)。共享语义如实声明:
@@ -277,9 +282,11 @@ beforeBuildCommand 留空,frontendDist 用 `pyshade bundle` 产物)。
 - 实测(Windows):安装包 27.2MB(NSIS,per-user 安装到 `%LOCALAPPDATA%`),
   首次全量编译 ~9min、增量 ~1min,pyembed 命中缓存的一键 package 83s。
 
-### 3.13 内容组件(M4:Heading / Link / Markdown / CodeBlock)
+### 3.13 内容组件(M4:Heading / Link / Markdown / CodeBlock / Stack)
 
 文档站与长文场景的最小集,List/Table 由 Markdown 表达,Image 不做(静态资产管线缺失,§6)。
+Stack 是纵向布局容器(无边框卡片语义,width 档位 sm/md/lg/full 构建期定档 'const'):
+Card 恒 max-w-sm 承载不了文档流,Stack 补上"页面级内容列"这一层。
 
 - **'const' binding(§3.3 第五类)**:`Component._const_props` 声明的 prop 是构建期常量——
   Markdown.source / CodeBlock.code,language / Link.text,href / Heading.level 在编译期渲染进

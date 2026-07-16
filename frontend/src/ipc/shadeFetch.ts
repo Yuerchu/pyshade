@@ -122,8 +122,32 @@ async function httpFetch(path: string, init: ShadeFetchInit): Promise<Response> 
   });
 }
 
-/** 统一入口:pytauri 环境走 IPC,浏览器 dev 走 HTTP(vite proxy)。 */
+/**
+ * demo mock 钩子(M4 文档站,design.md §3.10):静态托管无 Python 后端时,
+ * 站点脚本可挂 window.__PYSHADE_MOCK__ 拦截 /_shade/*,返回 Response 即短路
+ * (JSON envelope / SSE ReadableStream 均可,patches 全链路照常驱动);
+ * 返回 undefined 则回落真实 fetch——未定义时行为与既往完全一致。
+ */
+export type ShadeMockHandler = (path: string, init: ShadeFetchInit) => Promise<Response | undefined>;
+
+declare global {
+  interface Window {
+    __PYSHADE_MOCK__?: ShadeMockHandler;
+  }
+}
+
+/** 统一入口:pytauri 环境走 IPC;浏览器先问 mock 钩子,未接管则走 HTTP。 */
 export async function shadeFetch(path: string, init?: ShadeFetchInit): Promise<Response> {
   const resolved = init ?? {};
-  return isTauri() ? ipcFetch(path, resolved) : httpFetch(path, resolved);
+  if (isTauri()) {
+    return ipcFetch(path, resolved);
+  }
+  const mock = window.__PYSHADE_MOCK__;
+  if (mock !== undefined) {
+    const handled = await mock(path, resolved);
+    if (handled !== undefined) {
+      return handled;
+    }
+  }
+  return httpFetch(path, resolved);
 }

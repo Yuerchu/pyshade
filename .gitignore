@@ -15,6 +15,7 @@ node_modules/
 frontend/src/generated/
 frontend/src/generated-gallery/
 frontend/src/generated-board/
+frontend/src/generated-docs/
 frontend/dist-testkit/
 
 # 零 Node 打包的发版产物与用户工作目录

@@ -96,6 +96,7 @@ extraPaths = [
   "examples/settings_panel/src",
   "examples/component_gallery/src",
   "examples/task_board/src",
+  "docs_site/src",
 ]
 # FastAPI 路由函数经装饰器注册;Page 子类定义本身即测试对象(__init_subclass__ 副作用)
 reportUnusedFunction = "none"
@@ -108,6 +109,7 @@ pythonpath = [
   "examples/settings_panel/src",
   "examples/component_gallery/src",
   "examples/task_board/src",
+  "docs_site/src",
 ]
 markers = ["e2e_native: 真机 WebView E2E(需要 pytauri-wheel + 前端构建产物)"]
 addopts = "-m 'not e2e_native'"

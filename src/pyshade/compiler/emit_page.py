@@ -316,6 +316,29 @@ def emit_link(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     _close_visible_guard(guarded, w)
 
 
+_STACK_WIDTHS: dict[str, str] = {
+    'sm': 'flex w-full max-w-sm flex-col gap-4',
+    'md': 'flex w-full max-w-3xl flex-col gap-4',
+    'lg': 'flex w-full max-w-5xl flex-col gap-4',
+    'full': 'flex w-full flex-col gap-4',
+}
+"""Stack width 档位 → class;字符串写在编译器源码内,供 @source 扫描命中。"""
+
+
+@register('Stack')
+def emit_stack(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    guarded = _emit_visible_guard(node, w, ctx)
+    width = next(p for p in node.props if p.name == 'width')
+    class_name = _STACK_WIDTHS[cast('str', width.default_value)]
+    w.line(f'<section className="{class_name}">')
+    w.indent()
+    for child in node.children:
+        emit_node(child, w, ctx)
+    w.dedent()
+    w.line('</section>')
+    _close_visible_guard(guarded, w)
+
+
 @register('Markdown')
 def emit_markdown(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     """编译期 md→HTML(const),dangerouslySetInnerHTML 内联;样式走 typography prose。"""
@@ -1108,10 +1131,17 @@ def emit_each(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     elif visible_prop.binding == 'server_ref' or visible_prop.default_value is True:
         guard_js = ctx.prop_js(node, visible_prop)
 
+    def _has_events(candidate: NodeIR) -> bool:
+        return bool(candidate.events) or any(_has_events(child) for child in candidate.children)
+
     items_prop = next(p for p in node.props if p.name == 'items')
     ref = cast('ServerRef[Any]', items_prop.default_value)
     var = _var_name(node.anchor)
-    item_var, index_var = f'{var}Item', f'{var}Index'
+    # index 仅在 key 缺省(Fragment key)或模板含事件(payload 带 item_index)时被引用;
+    # 未用时加下划线前缀豁免 tsc noUnusedParameters
+    index_used = each.key is None or any(_has_events(child) for child in node.children)
+    item_var = f'{var}Item'
+    index_var = f'{var}Index' if index_used else f'_{var}Index'
 
     model = item_model_of(each)
     if model is not None:

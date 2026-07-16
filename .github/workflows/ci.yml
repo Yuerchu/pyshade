@@ -85,13 +85,18 @@ jobs:
       - run: pnpm -C frontend build:css
       - name: CSS coverage gate
         run: uv run python scripts/check_css_coverage.py
-      # 组件画廊 + 任务看板:全组件/路由/Each 的生成代码过真实 tsc
+      # 组件画廊 + 任务看板 + 文档站:全组件/路由/Each/内容组件的生成代码过真实 tsc
       - name: Compile gallery & board examples
         run: |
           uv run pyshade build component_gallery.app:app --out frontend/src/generated-gallery
           uv run pyshade build task_board.app:app --out frontend/src/generated-board
         env:
           PYTHONPATH: examples/component_gallery/src:examples/task_board/src
+      - name: Compile docs site (en)
+        run: uv run pyshade build docs_site.app:app --out frontend/src/generated-docs
+        env:
+          PYTHONPATH: docs_site/src
+          PYSHADE_DOCS_LOCALE: en
       - name: Typecheck all generated output
         run: pnpm -C frontend typecheck
 

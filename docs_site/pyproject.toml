@@ -1,0 +1,17 @@
+[project]
+name = "pyshade-docs-site"
+version = "0.1.0"
+description = "PyShade 文档站(M4 dogfooding):逐组件页 + props 表 + live demo,双 locale 静态构建"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+  "pyshade[content]",
+]
+
+[dependency-groups]
+# 本地预览原生窗口才需要;CF Pages 静态构建与 pyshade dev 都不用
+dev = [
+  "pytauri-wheel>=0.8,<0.9",
+]
+
+[tool.uv.sources]
+pyshade = { path = ".." }
