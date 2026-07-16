@@ -388,7 +388,6 @@ wheels = [
 
 [[package]]
 name = "pyshade"
-version = "0.1.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },
@@ -406,6 +405,9 @@ content = [
     { name = "mistune" },
     { name = "pygments" },
 ]
+native = [
+    { name = "pytauri-wheel" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -414,9 +416,6 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
     { name = "types-pygments" },
-]
-native = [
-    { name = "pytauri-wheel" },
 ]
 
 [package.metadata]
@@ -428,11 +427,12 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pygments", marker = "extra == 'content'", specifier = ">=2.17" },
     { name = "pytauri", specifier = ">=0.8,<0.9" },
+    { name = "pytauri-wheel", marker = "extra == 'native'", specifier = ">=0.8,<0.9" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2" },
     { name = "uvicorn", specifier = ">=0.30" },
     { name = "watchfiles", specifier = ">=0.21" },
 ]
-provides-extras = ["content"]
+provides-extras = ["content", "native"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -442,7 +442,6 @@ dev = [
     { name = "ruff", specifier = ">=0.5" },
     { name = "types-pygments", specifier = ">=2.17" },
 ]
-native = [{ name = "pytauri-wheel", specifier = ">=0.8,<0.9" }]
 
 [[package]]
 name = "pytauri"

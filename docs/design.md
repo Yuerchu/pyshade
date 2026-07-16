@@ -371,8 +371,17 @@ M0 七项验证全部通过(隐藏窗口 `visible:false`,JS 正常执行,`docume
   取代从未工作的 `bundle --watch`)、路由 keep-alive、`#/PageName` 深链、theme 主题口子。
   未进 M3(移交 M4+):签名/公证、dark mode、窗口热重载、AppImage 验证、
   受限闭包 handler、Each 增强、服务端弹窗。
-- **M4 — 文档站与发布**:
-  schema 生成 props 表、llms.txt、web target dogfooding 文档站、PyPI 发布。
+- **M4 — 文档站与发布**(已完成,详见 §3.10/§3.13/§3.3/§3.6/§3.11):
+  props 表走 model_fields 内省(`pyshade.docs.introspect`,与 EMITTERS 双向对账;
+  全组件 Field(description=英文) + 中文翻译表,防漂移测试网);内容组件五件
+  (Heading/Link/Markdown/CodeBlock/Stack,'const' 第五类 binding);文档站 dogfooding
+  (docs_site/,双 locale 33 页,动态 Page 工厂,live demo + demo-mock.js 静态模拟,
+  CF Pages workflow);llms.txt + llms-full.txt + md 快照(链接指 md,hash SPA 对爬虫
+  是空壳);`pyshade serve` 最小 web target;发布链(dynamic version、native/content
+  extras、wheel-only + 严格资产模式、release.yml 的 publish-pypi/testpypi OIDC 闸门、
+  README 重写)。搭车交付:dark mode(class 策略 + 零 IPC scheme action)、bundle 窄版
+  增量(staging stamp + esbuild 内容哈希)。未进 M4(移交 M4+):签名/公证、窗口热重载、
+  AppImage 验证、受限闭包 handler、Each 增强、服务端弹窗、per-visitor session 隔离。
 
 M0 是风险所在,M2 之后是体力活;先验证再铺量。
 

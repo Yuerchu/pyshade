@@ -1,10 +1,17 @@
 name: Release
 
-# 三平台 standalone 安装包:tag 推送出正式产物(draft release),workflow_dispatch 用于链路演练
+# 三平台 standalone 安装包 + PyPI 发布:tag 推送出正式产物(draft release + PyPI,
+# PyPI 侧经 environment 审批闸门);workflow_dispatch 用于链路演练(可选发 TestPyPI)
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      publish:
+        description: '演练时把 wheel 发到哪里'
+        type: choice
+        options: [none, testpypi]
+        default: none
 
 env:
   PYTHONUTF8: '1'
@@ -20,6 +27,14 @@ jobs:
           enable-cache: true
           python-version: '3.13'
       - run: uv sync --group dev
+      - name: Assert tag matches __version__
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(grep -oP "__version__ = '\K[^']+" src/pyshade/__init__.py)
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$tag" ]; then
+            echo "tag v$tag 与 __version__ $version 不一致"; exit 1
+          fi
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -33,6 +48,10 @@ jobs:
       - name: Materialize vendor tree
         run: uv run python scripts/build_vendor.py
       - run: uv build --wheel
+        env:
+          PYSHADE_REQUIRE_FRONTEND_ASSETS: '1'
+      - name: Assert wheel carries frontend assets
+        run: uv run python scripts/assert_wheel_assets.py
       - uses: actions/upload-artifact@v4
         with:
           name: pyshade-wheel
@@ -121,6 +140,39 @@ jobs:
           name: installers-${{ matrix.os }}
           path: dist-package/
 
+  # 正式发布:三平台安装包 + smoke 全绿才发;environment: pypi 配 required reviewer
+  # 即"tag 推送 → 全绿 → 人工批准 → 发布"的闸门;纯 OIDC trusted publishing,无 token
+  publish-pypi:
+    needs: [wheel-assets, package]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pyshade-wheel
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # 演练通道:workflow_dispatch 且 publish=testpypi 时发 TestPyPI(版本需 bump devN,不可重传)
+  publish-testpypi:
+    needs: [wheel-assets, package]
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == 'testpypi'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pyshade-wheel
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
   release:
     needs: package
     if: startsWith(github.ref, 'refs/tags/')
@@ -133,11 +185,17 @@ jobs:
           pattern: installers-*
           merge-multiple: true
           path: dist-all
+      - uses: actions/download-artifact@v4
+        with:
+          name: pyshade-wheel
+          path: dist-all
       - uses: softprops/action-gh-release@v2
         with:
           draft: true
           files: dist-all/**
           body: |
+            `pip install "pyshade[native]"`(PyPI)或使用下方平台安装包。
+
             未签名产物说明:
             - macOS:首次打开需右键 → 打开,或 `xattr -d com.apple.quarantine <App>`
             - Windows:SmartScreen 提示时选择"仍要运行"

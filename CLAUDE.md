@@ -2,8 +2,9 @@
 
 用 Python 构建现代桌面应用的框架:Pydantic 组件 DTO 编译成 shadcn/ui React,跑在系统 WebView(pytauri 壳)。
 
-**`docs/design.md` 是架构单一事实源**,改动架构决策必须同步该文档。M0-M3 已完成
-(M3 = standalone 安装包链 + pyshade dev + keep-alive/深链 + theme),当前迈向 M4(文档站与发布)。
+**`docs/design.md` 是架构单一事实源**,改动架构决策必须同步该文档。M0-M4 已完成
+(M4 = 文档站 dogfooding + props 内省 + 内容组件 + dark mode + pyshade serve + PyPI 发布链);
+发版待用户手工:PyPI/TestPyPI trusted publisher 登记、CF Pages secrets、首个 v* tag。
 
 ## 关键决策速览(详见 design.md)
 

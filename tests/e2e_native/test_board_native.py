@@ -33,7 +33,7 @@ def board_report() -> dict[str, Any]:
     try:
         import pytauri_wheel.lib  # noqa: F401  # pyright: ignore[reportUnusedImport]
     except Exception:
-        pytest.skip("pytauri-wheel 不可用:uv sync --group native")
+        pytest.skip("pytauri-wheel 不可用:uv sync --extra native")
 
     report_dir = REPO / 'reports' / 'native-board'
     board_src = REPO / 'examples' / 'task_board' / 'src'

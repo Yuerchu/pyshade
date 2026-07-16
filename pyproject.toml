@@ -1,21 +1,26 @@
 [project]
 name = "pyshade"
-version = "0.1.0.dev0"
+dynamic = ["version"]
 description = "Build modern desktop apps in pure Python — Pydantic component DTOs compiled to shadcn/ui React, running on the system WebView via pytauri."
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10,<3.14"
 authors = [{ name = "于小丘 Yuerchu", email = "admin@yuxiaoqiu.cn" }]
 keywords = ["desktop", "gui", "tauri", "shadcn", "pydantic", "webview"]
 classifiers = [
-  "Development Status :: 2 - Pre-Alpha",
+  "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Topic :: Software Development :: User Interfaces",
+  "Typing :: Typed",
 ]
 dependencies = [
   "pydantic>=2.7",
@@ -32,13 +37,18 @@ dependencies = [
 # Markdown/CodeBlock 内容组件的编译期依赖(design.md §3.13):运行时不需要,
 # pygments ~4MB 不进主依赖/standalone 安装包
 content = ["mistune>=3.0", "pygments>=2.17"]
+# 原生窗口免 Rust 工具链(pyshade.shell.run 的 dev 形态):PyPI 用户第一个窗口的路径
+native = ["pytauri-wheel>=0.8,<0.9"]
 
 [project.scripts]
 pyshade = "pyshade.cli:main"
 
 [project.urls]
-Documentation = "https://github.com/yuerchu/pyshade"
-Source = "https://github.com/yuerchu/pyshade"
+Homepage = "https://github.com/Yuerchu/pyshade"
+Documentation = "https://pyshade-docs.pages.dev"
+Repository = "https://github.com/Yuerchu/pyshade"
+Issues = "https://github.com/Yuerchu/pyshade/issues"
+Changelog = "https://github.com/Yuerchu/pyshade/releases"
 
 [dependency-groups]
 dev = [
@@ -48,13 +58,13 @@ dev = [
   "httpx>=0.27",
   "types-pygments>=2.17",
 ]
-native = [
-  "pytauri-wheel>=0.8,<0.9",
-]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/pyshade/__init__.py"
 
 # 零 Node 打包(design.md §3.6):前端运行时源码 + 物化 vendor + 预编译 CSS 随 wheel 分发。
 # 经 hatch_build.py 钩子按存在性注入(fresh checkout 缺发版产物时 editable 安装不受影响);

@@ -1,7 +1,7 @@
 """真机 E2E:session fixture 跑一次 harness,7 个用例各断言各的。
 
 前置产物:pnpm -C frontend build && pnpm -C frontend build:testkit
-依赖:uv sync --group native
+依赖:uv sync --extra native
 """
 
 import os
@@ -26,7 +26,7 @@ def native_report() -> TestReport:
     try:
         import pytauri_wheel.lib  # noqa: F401  # pyright: ignore[reportUnusedImport]
     except Exception:
-        pytest.skip("pytauri-wheel 不可用:uv sync --group native")
+        pytest.skip("pytauri-wheel 不可用:uv sync --extra native")
 
     from login_form.runtime import build_runtime
 
