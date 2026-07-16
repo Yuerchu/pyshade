@@ -452,6 +452,16 @@ M0 是风险所在,M2 之后是体力活;先验证再铺量。
 - IPC 流式响应的客户端取消不通知 Python 侧:PSA1 无上行 cancel 帧,webview 重载/订阅取消后
   push 订阅者滞留,直到缓冲满被 PatchBus 断流(§3.3 兜底)或进程退出;上行 cancel 帧是候选
   协议扩展(0x10-0x1F 保留位)。
+- 发版前审查(2026-07-16)判定"记录不修"的健壮性项(0.1.x 按需跟进):下载重试无退避且
+  404 也盲试;缓存 tarball 命中后不复检 sha256、下载中断的 tmp 残件不清理;packager 不感知
+  `CARGO_TARGET_DIR`/cargo config 的 target-dir 重定向;asgi lifespan startup/shutdown 等待
+  无超时兜底;expr 双端求值的字符串比较在非 BMP 字符上 Python(码点)与 JS(UTF-16 码元)
+  相反、int 超 2^53 时 JS 丢精度;同步 handler 在事件循环内联执行(to_thread 需先解决
+  跨线程 ServerState 写入,见 PatchBus loop 校验);`pyshade dev --open` 在端口就绪前开
+  浏览器;pyembed pip 回退的报错不提 `--fresh-pyembed`;`bench.ts` 死代码;web serve 对
+  websocket scope 打到静态路径报 AssertionError 而非 4xx;`_report` 自定义 threshold 键
+  无 `.` 时裸崩;release tag 不约束落在哪个 commit(仓库侧 tag ruleset + environment
+  部署策略是正解,见发版手工步骤)。
 
 已关闭的问题(结论回填正文):pytauri 成熟度评估 → 3.9;Python 打包工具选型 → 不用
 PyInstaller/Nuitka,走 python-build-standalone + Tauri bundler(3.9 / M3);流式协议设计 →

@@ -4,7 +4,9 @@
 
 **`docs/design.md` 是架构单一事实源**,改动架构决策必须同步该文档。M0-M4 已完成
 (M4 = 文档站 dogfooding + props 内省 + 内容组件 + dark mode + pyshade serve + PyPI 发布链);
-发版待用户手工:PyPI/TestPyPI trusted publisher 登记、CF Pages secrets、首个 v* tag。
+发版前深度审查加固已落地(§3.3 构造期防线三原则:输入必须校验、禁止静默失败、老版本分支
+兼容;Connection Lost 徽标;workflows SHA pin)。发版待用户手工:PyPI/TestPyPI trusted
+publisher 登记、CF Pages secrets、首个 v* tag(建议顺手配 `v*` tag ruleset)。
 
 ## 关键决策速览(详见 design.md)
 
