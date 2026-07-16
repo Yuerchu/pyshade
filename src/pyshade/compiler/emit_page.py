@@ -316,6 +316,34 @@ def emit_link(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     _close_visible_guard(guarded, w)
 
 
+@register('Markdown')
+def emit_markdown(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    """编译期 md→HTML(const),dangerouslySetInnerHTML 内联;样式走 typography prose。"""
+    from pyshade.compiler._content import render_markdown
+
+    guarded = _emit_visible_guard(node, w, ctx)
+    source = next(p for p in node.props if p.name == 'source')
+    html = render_markdown(cast('str', source.default_value))
+    w.line(
+        '<div className="prose prose-neutral dark:prose-invert max-w-none" '
+        f'dangerouslySetInnerHTML={{{{ __html: {js_string(html)} }}}} />'
+    )
+    _close_visible_guard(guarded, w)
+
+
+@register('CodeBlock')
+def emit_code_block(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
+    """编译期 pygments 高亮(const);.shade-hl 作用域化 token 样式(index.css 手写块)。"""
+    from pyshade.compiler._content import highlight_code
+
+    guarded = _emit_visible_guard(node, w, ctx)
+    code = next(p for p in node.props if p.name == 'code')
+    language = next(p for p in node.props if p.name == 'language')
+    html = highlight_code(cast('str', code.default_value), cast('str', language.default_value))
+    w.line(f'<pre className="shade-hl"><code dangerouslySetInnerHTML={{{{ __html: {js_string(html)} }}}} /></pre>')
+    _close_visible_guard(guarded, w)
+
+
 @register('Button')
 def emit_button(node: NodeIR, w: TsxWriter, ctx: _PageEmitContext) -> None:
     ctx.imports.add('Button')

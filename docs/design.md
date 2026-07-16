@@ -264,6 +264,27 @@ beforeBuildCommand 留空,frontendDist 用 `pyshade bundle` 产物)。
 - 实测(Windows):安装包 27.2MB(NSIS,per-user 安装到 `%LOCALAPPDATA%`),
   首次全量编译 ~9min、增量 ~1min,pyembed 命中缓存的一键 package 83s。
 
+### 3.13 内容组件(M4:Heading / Link / Markdown / CodeBlock)
+
+文档站与长文场景的最小集,List/Table 由 Markdown 表达,Image 不做(静态资产管线缺失,§6)。
+
+- **'const' binding(§3.3 第五类)**:`Component._const_props` 声明的 prop 是构建期常量——
+  Markdown.source / CodeBlock.code,language / Link.text,href / Heading.level 在编译期渲染进
+  产物,运行时 patch 必然静默失效,故 `Update` 构造期拒绝、emitter 内联字面量(不发 rt.ov)。
+  Heading.text 保持 Text 同款三态(plain/Expr/ServerRef)。
+- **markdown 编译期渲染**:mistune v3(table/strikethrough/task_lists 插件)+ pygments 高亮,
+  挂 `pyshade[content]` extra(pygments ~4MB 不进主依赖/standalone 安装包);编译器惰性
+  import,缺失报 CompileError 带安装提示;未知语言编译期报错。**escape=True 一律拒绝
+  raw HTML**(无逃生口)——内容虽是构建期作者可控,不给"将来内容源不可控"留新决策点;
+  运行时动态 markdown(LLM 输出类场景)不支持,记 §6。
+- **样式两条线**:Markdown 产物挂 `prose prose-neutral dark:prose-invert max-w-none`
+  (@tailwindcss/typography,只进发版 CSS 预编译,零用户侧 Node/运行时依赖;emitter 字符串
+  经 @source 扫描命中);代码高亮的 pygments 短 class(k/s1/c1…)经 `.shade-hl` 后代选择器
+  作用域化,token 变量定义在 .shade-hl 自身作用域(不进 :root,不扰 Theme 对账),
+  `.dark .shade-hl` 提供暗色。
+- **Link 语义**:仅外链(http(s)/mailto,构造期校验),应用内跳转的正门是 navigate(§3.11);
+  桌面 WebView 上外链应转系统浏览器打开,M4 未解,记 §6。
+
 ## 4. 已知风险与预期管理
 
 - **包体**:去掉 Chromium 后瓶颈转移到 Python 运行时,PyInstaller/Nuitka 产物 30-50MB 起步。
@@ -340,6 +361,11 @@ M0 是风险所在,M2 之后是体力活;先验证再铺量。
 - 服务端弹窗:`open` 归客户端所有(§3.3),服务端想主动弹窗(全局错误/更新提示)缺正门,
   语义与 `$nav` 类似的保留地址是候选。
 - web target 的优先级:仅服务文档站,还是作为正式发布特性。
+- Link 外链在桌面 WebView 应转系统浏览器打开(当前 target="_blank" 行为依 WebView 而定),
+  需要壳层 opener 接线(§3.13)。
+- 运行时动态 markdown(ServerRef 驱动的内容,LLM 聊天类场景):当前 Markdown 是编译期
+  const,动态化需要前端运行时渲染器,违背零运行时依赖,暂不做(§3.13)。
+- Image 与静态资产管线:bundle 三件套契约没有资产拷贝/寻址机制,Image 组件依赖它(§3.13)。
 
 已关闭的问题(结论回填正文):pytauri 成熟度评估 → 3.9;Python 打包工具选型 → 不用
 PyInstaller/Nuitka,走 python-build-standalone + Tauri bundler(3.9 / M3);流式协议设计 →

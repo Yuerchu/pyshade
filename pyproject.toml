@@ -28,6 +28,11 @@ dependencies = [
   "watchfiles>=0.21",
 ]
 
+[project.optional-dependencies]
+# Markdown/CodeBlock 内容组件的编译期依赖(design.md §3.13):运行时不需要,
+# pygments ~4MB 不进主依赖/standalone 安装包
+content = ["mistune>=3.0", "pygments>=2.17"]
+
 [project.scripts]
 pyshade = "pyshade.cli:main"
 
@@ -41,6 +46,7 @@ dev = [
   "ruff>=0.5",
   "pyright>=1.1",
   "httpx>=0.27",
+  "types-pygments>=2.17",
 ]
 native = [
   "pytauri-wheel>=0.8,<0.9",

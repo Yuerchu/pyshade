@@ -1,9 +1,12 @@
-"""M4 Phase 1 内容组件编译:const binding 分类、Heading 档位发射、Link 字面量内联。"""
+"""M4 内容组件编译:const binding 分类、Heading 档位、Link 字面量、编译期 markdown/高亮。"""
+
+import pytest
 
 from pyshade.compiler.checks import check_page_ir
 from pyshade.compiler.emit_page import emit_page
+from pyshade.compiler.errors import CompileError
 from pyshade.compiler.ir import build_page_ir, iter_node_irs
-from pyshade.components import Card, Heading, Link, Switch, Text
+from pyshade.components import Card, CodeBlock, Heading, Link, Markdown, Switch, Text
 from pyshade.expr import ClientVal
 from pyshade.page import Page
 from tests.compiler.test_compiler import golden_compare
@@ -42,6 +45,42 @@ class TestContentGolden:
         assert 'rt.ov("ContentPage.home", "href"' not in tsx
         assert 'rt.ov("ContentPage.home", "text"' not in tsx
         golden_compare('ContentPage.gen.tsx', tsx)
+
+
+class MarkdownContentPage(Page):
+    doc = Markdown(
+        '# 标题\n\n**加粗**与 `行内代码`\n\n| 列 A | 列 B |\n|---|---|\n| 1 | 2 |\n\n'
+        '```python\ndef hi() -> int:\n    return 1\n```\n'
+    )
+    xss = Markdown('<script>alert(1)</script> 与 <img src=x onerror=alert(2)>')
+    snippet = CodeBlock('SELECT 1;\n', language='sql')
+    plain = CodeBlock('纯文本,无高亮')
+
+    card = Card(doc, xss, snippet, plain, title='Markdown')
+
+
+class TestMarkdownGolden:
+    def test_markdown_page_tsx(self) -> None:
+        ir = build_page_ir(MarkdownContentPage)
+        check_page_ir(ir)
+        tsx = emit_page(ir)
+        # prose 样式挂载 + 编译期渲染(dangerouslySetInnerHTML 内联静态 HTML)
+        assert 'prose prose-neutral dark:prose-invert max-w-none' in tsx
+        assert '<table>' in tsx
+        # 代码块走 pygments,.shade-hl 作用域
+        assert 'shade-hl' in tsx
+        # XSS 锚定:escape=True,raw HTML 一律转义
+        assert '<script>alert(1)</script>' not in tsx
+        assert '&lt;script&gt;' in tsx
+        assert 'onerror=' not in tsx.replace('&lt;img src=x onerror=alert(2)&gt;', '')
+        golden_compare('MarkdownContentPage.gen.tsx', tsx)
+
+    def test_unknown_language_compile_error(self) -> None:
+        class BadLangPage(Page):
+            bad = CodeBlock('x', language='not-a-language')
+
+        with pytest.raises(CompileError, match='未知语言'):
+            emit_page(build_page_ir(BadLangPage))
 
 
 class TestConstBinding:

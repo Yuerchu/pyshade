@@ -1,8 +1,8 @@
-"""组件画廊:24 个组件 + Each + 路由全铺开。
+"""组件画廊:26 个组件 + Each + 路由全铺开。
 
 这个 example 的首要职责是给 CI 提供"真实 tsc"校验面——生成代码的每种发射形态
-(受控 useState、选项 map、asChild 槽、多槽容器、.map 模板、rt.navigate、const 字面量)
-都在这里出现一次。
+(受控 useState、选项 map、asChild 槽、多槽容器、.map 模板、rt.navigate、const 字面量、
+编译期 markdown/高亮)都在这里出现一次。
 """
 
 from typing import Any
@@ -21,11 +21,13 @@ from pyshade.components import (
     ButtonVariant,
     Card,
     Checkbox,
+    CodeBlock,
     Dialog,
     Each,
     Heading,
     Input,
     Link,
+    Markdown,
     Option,
     Orientation,
     PasswordInput,
@@ -55,12 +57,21 @@ class WidgetsPage(Page):
     heading = Heading('组件画廊 — 展示件', level=1)
     intro = Text('每种发射形态在四个页面各出现一次')
     tag = Badge('M4', variant=BadgeVariant.SECONDARY)
-    notice = Alert('提示', description='四个页面覆盖全部 24 个组件', variant=AlertVariant.DEFAULT)
+    notice = Alert('提示', description='四个页面覆盖全部 26 个组件', variant=AlertVariant.DEFAULT)
     divider = Separator(orientation=Orientation.HORIZONTAL)
     placeholder = Skeleton(width='10rem', height='1.25rem')
     upload = Progress(GalleryDemoState.upload_pct)
     repo = Link('PyShade 源码', 'https://github.com/Yuerchu/pyshade')
     dark_toggle = Button('明暗切换', variant=ButtonVariant.GHOST, on_click=toggle_color_scheme())
+    readme = Markdown(
+        '**内容组件**支持表格、`行内代码`与任务列表:\n\n'
+        '| 组件 | 渲染时机 |\n|---|---|\n| Markdown | 编译期 |\n| CodeBlock | 编译期 |\n\n'
+        '- [x] escape=True 拒绝 raw HTML\n- [ ] 运行时 markdown(§6 开放)'
+    )
+    snippet = CodeBlock(
+        'from pyshade.components import Markdown\n\ndoc = Markdown("**hello**")\n',
+        language='python',
+    )
 
     goto_form = Button('表单件', variant=ButtonVariant.OUTLINE, on_click=navigate('FormPage'))
     goto_overlays = Button('浮层件', variant=ButtonVariant.OUTLINE, on_click=navigate('OverlaysPage'))
@@ -76,11 +87,13 @@ class WidgetsPage(Page):
         upload,
         repo,
         dark_toggle,
+        readme,
+        snippet,
         goto_form,
         goto_overlays,
         goto_structure,
         title='展示件',
-        description='Heading / Text / Badge / Alert / Separator / Skeleton / Progress / Link',
+        description='Heading / Text / Badge / Alert / Separator / Skeleton / Progress / Link / Markdown / CodeBlock',
     )
 
 

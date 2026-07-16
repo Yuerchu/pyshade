@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Markdown 组件(§3.13)的 prose 样式:只参与 CSS 预编译,零前端运行时依赖 */
+@plugin "@tailwindcss/typography";
+
 /* 内容源:frontend/src 全量 + 编译器 emitter(.py 字符串里的 class,v4 扫描器语言无关)。
    写在此处使 vite 插件与 @tailwindcss/cli 两条管线共享同一份定义。 */
 @source ".";
@@ -146,4 +149,51 @@
     @apply bg-background text-foreground;
     font-family: "PingFang SC", system-ui, -apple-system, sans-serif;
   }
+}
+
+/* CodeBlock 与 Markdown 代码块(§3.13):编译期 pygments 高亮的短 class(k/s1/c1…)
+   经 .shade-hl 后代选择器作用域化;token 变量定义在 .shade-hl 自身作用域,
+   不进 :root(防打破 Theme↔:root 对账测试),暗色由 .dark .shade-hl 覆盖。 */
+.shade-hl {
+  --hl-comment: oklch(0.556 0 0);
+  --hl-keyword: oklch(0.49 0.19 300);
+  --hl-string: oklch(0.52 0.13 150);
+  --hl-number: oklch(0.55 0.15 60);
+  --hl-name: oklch(0.45 0.15 250);
+  background: var(--muted);
+  border-radius: var(--radius);
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.dark .shade-hl {
+  --hl-comment: oklch(0.65 0 0);
+  --hl-keyword: oklch(0.75 0.15 300);
+  --hl-string: oklch(0.75 0.12 150);
+  --hl-number: oklch(0.78 0.13 60);
+  --hl-name: oklch(0.72 0.12 250);
+}
+.shade-hl code {
+  font-family: "Maple Mono NF CN", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: none;
+  padding: 0;
+}
+.shade-hl .c, .shade-hl .c1, .shade-hl .cm, .shade-hl .cs, .shade-hl .ch {
+  color: var(--hl-comment);
+  font-style: italic;
+}
+.shade-hl .k, .shade-hl .kn, .shade-hl .kd, .shade-hl .kc, .shade-hl .kt, .shade-hl .kp,
+.shade-hl .kr, .shade-hl .ow {
+  color: var(--hl-keyword);
+}
+.shade-hl .s, .shade-hl .s1, .shade-hl .s2, .shade-hl .sd, .shade-hl .sb, .shade-hl .sa,
+.shade-hl .si, .shade-hl .se, .shade-hl .sx {
+  color: var(--hl-string);
+}
+.shade-hl .m, .shade-hl .mi, .shade-hl .mf, .shade-hl .mh, .shade-hl .mo, .shade-hl .mb {
+  color: var(--hl-number);
+}
+.shade-hl .nf, .shade-hl .nc, .shade-hl .nd, .shade-hl .nb, .shade-hl .ne, .shade-hl .nn {
+  color: var(--hl-name);
 }

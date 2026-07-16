@@ -24,7 +24,7 @@ jobs:
           enable-cache: true
           python-version: '3.13'
       # native 组让 pyright 能解析 pytauri_wheel(_harness.py 的惰性 import)
-      - run: uv sync --group dev --group native
+      - run: uv sync --group dev --group native --extra content
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pyright
@@ -49,7 +49,7 @@ jobs:
         with:
           enable-cache: true
           python-version: ${{ matrix.python }}
-      - run: uv sync --group dev --group native
+      - run: uv sync --group dev --group native --extra content
       - run: uv run pytest -q --junitxml=junit.xml
       - uses: actions/upload-artifact@v4
         if: always()
@@ -65,7 +65,7 @@ jobs:
         with:
           enable-cache: true
           python-version: '3.13'
-      - run: uv sync --group dev
+      - run: uv sync --group dev --extra content
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -281,7 +281,7 @@ jobs:
         with:
           enable-cache: true
           python-version: '3.13'
-      - run: uv sync --group dev --group native
+      - run: uv sync --group dev --group native --extra content
       - uses: pnpm/action-setup@v4
         with:
           version: 10

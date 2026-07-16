@@ -10,6 +10,7 @@ from pyshade.components.base import Component, EventSpec, Handler
 from pyshade.components.button import Button
 from pyshade.components.card import Card
 from pyshade.components.checkbox import Checkbox
+from pyshade.components.code_block import CodeBlock
 from pyshade.components.dialog import AlertDialog, Dialog
 from pyshade.components.each import Each, item_snapshot
 from pyshade.components.enums import (
@@ -23,6 +24,7 @@ from pyshade.components.enums import (
 from pyshade.components.heading import Heading
 from pyshade.components.input import Input, PasswordInput
 from pyshade.components.link import Link
+from pyshade.components.markdown import Markdown
 from pyshade.components.options import Option
 from pyshade.components.progress import Progress
 from pyshade.components.radio_group import RadioGroup
@@ -50,6 +52,7 @@ __all__ = [
     'ButtonVariant',
     'Card',
     'Checkbox',
+    'CodeBlock',
     'Component',
     'Dialog',
     'Each',
@@ -59,6 +62,7 @@ __all__ = [
     'Input',
     'item_snapshot',
     'Link',
+    'Markdown',
     'Option',
     'Orientation',
     'PasswordInput',

@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from pyshade.components import Heading, Link
+from pyshade.components import CodeBlock, Heading, Link, Markdown
 from pyshade.components.base import const_props_of
 from pyshade.events import Update
 from pyshade.page import Page
@@ -13,10 +13,19 @@ class TestContentDto:
     def test_shade_tags(self) -> None:
         assert Heading('t')._shade_tag == 'Heading'  # pyright: ignore[reportPrivateUsage]
         assert Link('t', 'https://example.com')._shade_tag == 'Link'  # pyright: ignore[reportPrivateUsage]
+        assert Markdown('x')._shade_tag == 'Markdown'  # pyright: ignore[reportPrivateUsage]
+        assert CodeBlock('x')._shade_tag == 'CodeBlock'  # pyright: ignore[reportPrivateUsage]
 
     def test_const_props_declared(self) -> None:
         assert const_props_of(Heading('t')) == frozenset({'level'})
         assert const_props_of(Link('t', 'https://example.com')) == frozenset({'text', 'href'})
+        assert const_props_of(Markdown('x')) == frozenset({'source'})
+        assert const_props_of(CodeBlock('x')) == frozenset({'code', 'language'})
+
+    def test_code_block_defaults(self) -> None:
+        # 构造期不校验 language(pygments 是编译期依赖),编译期才报未知语言
+        assert CodeBlock('x').language == 'text'
+        assert CodeBlock('x', language='not-a-language').language == 'not-a-language'
 
     def test_heading_level_bounds(self) -> None:
         assert Heading('t').level == 2
@@ -39,6 +48,8 @@ class TestContentDto:
 class ContentDtoPage(Page):
     head = Heading('标题')
     home = Link('主页', 'https://example.com')
+    doc = Markdown('**hi**')
+    code = CodeBlock('x = 1')
 
 
 class TestUpdateConstRejection:
@@ -49,6 +60,10 @@ class TestUpdateConstRejection:
             Update(ContentDtoPage.home, text='改名')
         with pytest.raises(ValueError, match='构建期常量'):
             Update(ContentDtoPage.head, level=3)
+        with pytest.raises(ValueError, match='构建期常量'):
+            Update(ContentDtoPage.doc, source='**patched**')
+        with pytest.raises(ValueError, match='构建期常量'):
+            Update(ContentDtoPage.code, language='python')
 
     def test_plain_prop_still_updatable(self) -> None:
         update = Update(ContentDtoPage.head, text='新标题')
